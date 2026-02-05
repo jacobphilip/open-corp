@@ -1,6 +1,6 @@
 # Test Plan — open-corp
 
-Version: **0.1.0** | Total tests: **38** | Status: **All passing**
+Version: **0.1.0** | Total tests: **71** | Status: **All passing**
 
 ---
 
@@ -8,7 +8,8 @@ Version: **0.1.0** | Total tests: **38** | Status: **All passing**
 
 - **Framework:** pytest 9.x
 - **HTTP mocking:** respx 0.22 (for httpx)
-- **Fixtures:** `tests/conftest.py` — shared `tmp_project`, `config`, `accountant` fixtures
+- **Async:** pytest-asyncio 1.3 (strict mode)
+- **Fixtures:** `tests/conftest.py` — shared `tmp_project`, `config`, `accountant`, `router`, `hr`, `create_template`, `create_worker` fixtures
 - **Run:** `.venv/bin/pytest tests/ -v`
 
 ---
@@ -43,7 +44,7 @@ Version: **0.1.0** | Total tests: **38** | Status: **All passing**
 
 ---
 
-## test_router.py — 6 tests
+## test_router.py — 14 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -53,6 +54,14 @@ Version: **0.1.0** | Total tests: **38** | Status: **All passing**
 | 4 | test_budget_frozen_raises | Frozen budget → BudgetExceeded before API call |
 | 5 | test_explicit_model_tried_first | Explicit model parameter takes priority |
 | 6 | test_caution_prefers_cheap | CAUTION budget downgrades premium requests |
+| 7 | test_stream_success | Streaming yields content chunks, final has usage, cost recorded |
+| 8 | test_stream_budget_frozen | Frozen budget raises BudgetExceeded before streaming |
+| 9 | test_stream_empty_content | Empty deltas skipped, final chunk still correct |
+| 10 | test_stream_malformed_json | Malformed SSE lines skipped, valid chunks processed |
+| 11 | test_fetch_pricing_success | Parses models endpoint, caches pricing to disk |
+| 12 | test_fetch_pricing_network_error | Network error falls back to empty dict |
+| 13 | test_fetch_pricing_uses_disk_cache | Pre-populated disk cache returned on network error |
+| 14 | test_fetch_pricing_overwrites_cache | Fresh fetch replaces old cached data |
 
 ---
 
@@ -86,14 +95,49 @@ Version: **0.1.0** | Total tests: **38** | Status: **All passing**
 
 ---
 
-## Coverage Gaps (known, acceptable for v0.1)
+## test_cli.py — 14 tests
 
-- **Telegram bot:** No automated tests (requires async + bot API mocking)
-- **CLI (corp.py):** No automated tests (tested manually via CLI verification)
-- **YouTube training pipeline:** No automated tests (requires yt-dlp + whisper)
-- **Router streaming:** No automated tests (SSE stream mocking is complex)
-- **Pricing fetch:** No automated tests (external API dependency)
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_status_shows_project_info | exit 0, output has project name + budget |
+| 2 | test_status_config_error | exit 1 on missing charter.yaml |
+| 3 | test_budget_shows_report | exit 0, output has Spent/Remaining/Status |
+| 4 | test_budget_config_error | exit 1 on missing charter.yaml |
+| 5 | test_workers_empty | "No workers hired yet" when empty |
+| 6 | test_workers_lists_hired | Shows worker name + seniority |
+| 7 | test_hire_from_template | Creates worker dir, exit 0 |
+| 8 | test_hire_from_scratch | Uses --scratch --role, exit 0 |
+| 9 | test_hire_template_not_found | exit 1 when template missing |
+| 10 | test_hire_duplicate_worker | exit 1 when worker already exists |
+| 11 | test_chat_worker_not_found | exit 1, "not found" |
+| 12 | test_chat_quit_command | input="quit", exit 0, "Bye" |
+| 13 | test_chat_sends_message | Mocked router, response in output |
+| 14 | test_train_no_source | exit 1, "Specify a training source" |
 
 ---
 
-Total tests: **38** | All passing
+## test_telegram_bot.py — 11 tests
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_start_with_workers | Reply contains worker names |
+| 2 | test_start_no_workers | Reply contains "No workers hired yet" |
+| 3 | test_workers_lists_all | Reply contains names + seniority |
+| 4 | test_workers_empty | "No workers hired yet" when empty |
+| 5 | test_chat_selects_worker | Sets _user_workers, reply confirms |
+| 6 | test_chat_no_args | Reply contains "Usage:" |
+| 7 | test_chat_worker_not_found | Reply contains "not found" |
+| 8 | test_status_shows_info | Reply contains project name + budget |
+| 9 | test_budget_shows_report | Reply contains Spent/Remaining |
+| 10 | test_message_no_active_worker | "No active worker" when unset |
+| 11 | test_message_routes_to_worker | Patches Worker, verifies reply |
+
+---
+
+## Coverage Gaps (known, acceptable for v0.1)
+
+- **YouTube training pipeline:** No automated tests (requires yt-dlp + whisper)
+
+---
+
+Total tests: **71** | All passing

@@ -9,6 +9,8 @@ import yaml
 
 from framework.accountant import Accountant
 from framework.config import ProjectConfig
+from framework.hr import HR
+from framework.router import Router
 
 
 CHARTER_YAML = {
@@ -74,3 +76,43 @@ def config(tmp_project):
 def accountant(config):
     """Create an Accountant with the test config."""
     return Accountant(config)
+
+
+@pytest.fixture
+def router(config, accountant):
+    """Create a Router with a dummy API key."""
+    return Router(config, accountant, api_key="test-key")
+
+
+@pytest.fixture
+def hr(config, tmp_project):
+    """Create an HR instance."""
+    return HR(config, tmp_project)
+
+
+@pytest.fixture
+def create_template(tmp_project):
+    """Factory fixture to create template directories."""
+    def _create(name="researcher"):
+        tpl_dir = tmp_project / "templates" / name
+        tpl_dir.mkdir(parents=True, exist_ok=True)
+        (tpl_dir / "profile.md").write_text(f"# {name}\nA {name} worker.")
+        (tpl_dir / "skills.yaml").write_text(yaml.dump({"role": name, "skills": [name]}))
+        (tpl_dir / "config.yaml").write_text(yaml.dump({"level": 1, "max_context_tokens": 2000}))
+        return tpl_dir
+    return _create
+
+
+@pytest.fixture
+def create_worker(tmp_project):
+    """Factory fixture to create worker directories."""
+    def _create(name="alice", level=1, role="tester"):
+        worker_dir = tmp_project / "workers" / name
+        worker_dir.mkdir(parents=True, exist_ok=True)
+        (worker_dir / "profile.md").write_text(f"# {name}\nA {role} worker.")
+        (worker_dir / "memory.json").write_text("[]")
+        (worker_dir / "performance.json").write_text("[]")
+        (worker_dir / "skills.yaml").write_text(yaml.dump({"role": role, "skills": [role]}))
+        (worker_dir / "config.yaml").write_text(yaml.dump({"level": level, "max_context_tokens": 2000}))
+        return worker_dir
+    return _create
