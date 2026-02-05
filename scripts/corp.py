@@ -8,7 +8,7 @@ import click
 
 from framework.accountant import Accountant
 from framework.config import ProjectConfig
-from framework.exceptions import BudgetExceeded, ConfigError, ModelUnavailable, WorkerNotFound
+from framework.exceptions import BudgetExceeded, ConfigError, ModelUnavailable, TrainingError, WorkerNotFound
 from framework.hr import HR
 from framework.router import Router
 from framework.worker import Worker
@@ -186,8 +186,10 @@ def chat(ctx, worker_name):
 @cli.command()
 @click.argument("worker_name")
 @click.option("--youtube", help="YouTube URL to train from")
+@click.option("--document", help="Local file path to train from (PDF, markdown, text)")
+@click.option("--url", help="Web page URL to train from")
 @click.pass_context
-def train(ctx, worker_name, youtube):
+def train(ctx, worker_name, youtube, document, url):
     """Train a worker from external sources."""
     try:
         config, _, _, hr = _load_project(ctx.obj["project_dir"])
@@ -195,12 +197,63 @@ def train(ctx, worker_name, youtube):
         click.echo(f"Config error: {e}", err=True)
         sys.exit(1)
 
-    if youtube:
-        result = hr.train_from_youtube(worker_name, youtube)
-        click.echo(result)
-    else:
-        click.echo("Specify a training source: --youtube URL", err=True)
+    try:
+        if youtube:
+            result = hr.train_from_youtube(worker_name, youtube)
+            click.echo(result)
+        elif document:
+            result = hr.train_from_document(worker_name, document)
+            click.echo(result)
+        elif url:
+            result = hr.train_from_url(worker_name, url)
+            click.echo(result)
+        else:
+            click.echo("Specify a training source: --youtube URL, --document PATH, or --url URL", err=True)
+            sys.exit(1)
+    except TrainingError as e:
+        click.echo(f"Training error: {e}", err=True)
         sys.exit(1)
+    except WorkerNotFound as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("worker_name")
+@click.option("--search", default=None, help="Search knowledge base with keywords")
+@click.pass_context
+def knowledge(ctx, worker_name, search):
+    """View or search a worker's knowledge base."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    try:
+        worker = Worker(worker_name, config.project_dir, config)
+    except WorkerNotFound:
+        click.echo(f"Worker '{worker_name}' not found.", err=True)
+        sys.exit(1)
+
+    entries = worker.knowledge.entries
+    if not entries:
+        click.echo(f"{worker_name} has no knowledge base entries.")
+        return
+
+    if search:
+        from framework.knowledge import search_knowledge
+        results = search_knowledge(entries, search, max_chars=10000)
+        click.echo(f"Found {len(results)} matching entries for '{search}':")
+        for entry in results:
+            click.echo(f"  [{entry.type}] {entry.source} (chunk {entry.chunk_index})")
+            click.echo(f"    {entry.content[:120]}...")
+    else:
+        click.echo(f"{worker_name} has {len(entries)} knowledge entries:")
+        sources = set(e.source for e in entries)
+        for source in sorted(sources):
+            source_entries = [e for e in entries if e.source == source]
+            click.echo(f"  {source} — {len(source_entries)} chunks")
 
 
 if __name__ == "__main__":

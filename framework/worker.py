@@ -8,6 +8,7 @@ import yaml
 
 from framework.config import ProjectConfig
 from framework.exceptions import WorkerNotFound
+from framework.knowledge import KnowledgeBase, search_knowledge
 from framework.router import Router
 
 # Seniority level → tier mapping
@@ -37,6 +38,7 @@ class Worker:
         self.skills = self._load_skills()
         self.worker_config = self._load_config()
         self.performance = self._load_performance()
+        self.knowledge = self._load_knowledge()
 
     def _load_profile(self) -> str:
         path = self.worker_dir / "profile.md"
@@ -78,6 +80,12 @@ class Worker:
                 return []
         return []
 
+    def _load_knowledge(self) -> KnowledgeBase:
+        kb_dir = self.worker_dir / "knowledge_base"
+        if kb_dir.exists():
+            return KnowledgeBase.load(kb_dir)
+        return KnowledgeBase(kb_dir)
+
     @property
     def level(self) -> int:
         return self.worker_config.get("level", self.config.worker_defaults.starting_level)
@@ -86,8 +94,12 @@ class Worker:
         """Map seniority level to model tier."""
         return LEVEL_TIER_MAP.get(self.level, "cheap")
 
-    def build_system_prompt(self) -> str:
-        """Construct system prompt from profile + recent memory + skills."""
+    def build_system_prompt(self, query: str = "") -> str:
+        """Construct system prompt from profile + knowledge + memory + skills.
+
+        When knowledge exists: 60% of char budget to knowledge, 40% to memory.
+        When no knowledge: 100% to memory (backward compat).
+        """
         parts = [self.profile]
 
         # Add skills summary
@@ -100,18 +112,43 @@ class Worker:
                 )
                 parts.append(f"\nYour skills: {skills_text}")
 
-        # Add recent memory (most recent first, within token budget)
-        if self.memory:
-            max_tokens = self.worker_config.get(
-                "max_context_tokens",
-                self.config.worker_defaults.max_context_tokens,
-            )
+        # Calculate char budget (minus profile + skills already used)
+        max_tokens = self.worker_config.get(
+            "max_context_tokens",
+            self.config.worker_defaults.max_context_tokens,
+        )
+        total_char_budget = max_tokens * 4  # rough chars-to-tokens
+        header_size = sum(len(p) for p in parts)
+        remaining_budget = max(0, total_char_budget - header_size)
+
+        has_knowledge = bool(self.knowledge.entries)
+
+        if has_knowledge:
+            knowledge_budget = int(remaining_budget * 0.6)
+            memory_budget = remaining_budget - knowledge_budget
+        else:
+            knowledge_budget = 0
+            memory_budget = remaining_budget
+
+        # Add knowledge (search-filtered if query provided)
+        if has_knowledge and knowledge_budget > 0:
+            if query:
+                relevant = search_knowledge(self.knowledge.entries, query, knowledge_budget)
+            else:
+                relevant = self.knowledge.entries
+            if relevant:
+                knowledge_text = "\n---\n".join(e.content for e in relevant)
+                if len(knowledge_text) > knowledge_budget:
+                    knowledge_text = knowledge_text[:knowledge_budget]
+                parts.append(f"\nKnowledge base:\n{knowledge_text}")
+
+        # Add recent memory (most recent first, within budget)
+        if self.memory and memory_budget > 0:
             memory_parts = []
-            char_budget = max_tokens * 4  # rough chars-to-tokens
             used = 0
             for entry in reversed(self.memory):
                 text = f"[{entry.get('type', 'note')}] {entry.get('content', '')}"
-                if used + len(text) > char_budget:
+                if used + len(text) > memory_budget:
                     break
                 memory_parts.append(text)
                 used += len(text)
@@ -129,7 +166,7 @@ class Worker:
 
     def chat(self, message: str, router: Router) -> str:
         """Send a message through the router and return the response."""
-        system_prompt = self.build_system_prompt()
+        system_prompt = self.build_system_prompt(query=message)
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": message},

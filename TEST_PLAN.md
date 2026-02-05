@@ -1,6 +1,6 @@
 # Test Plan — open-corp
 
-Version: **0.1.0** | Total tests: **71** | Status: **All passing**
+Version: **0.2.0** | Total tests: **117** | Status: **All passing**
 
 ---
 
@@ -65,7 +65,37 @@ Version: **0.1.0** | Total tests: **71** | Status: **All passing**
 
 ---
 
-## test_worker.py — 8 tests
+## test_knowledge.py — 23 tests
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_short_text_no_split | Text under chunk_size returns as single chunk |
+| 2 | test_empty_text | Empty/whitespace text returns empty list |
+| 3 | test_paragraph_boundaries | Splits on double-newline paragraph boundaries |
+| 4 | test_long_text_multiple_chunks | Long text produces multiple chunks within size limit |
+| 5 | test_single_huge_paragraph | Single paragraph larger than chunk_size is split |
+| 6 | test_overlap_preservation | Overlap text from previous chunk at start of next |
+| 7 | test_keyword_match | Entries matching query keywords are returned |
+| 8 | test_no_match_fallback | No keywords match → falls back to newest entries |
+| 9 | test_budget_enforcement | Results fit within max_chars budget |
+| 10 | test_multi_keyword_scoring | More keyword matches ranks higher |
+| 11 | test_empty_entries | Empty entries list returns empty |
+| 12 | test_zero_budget | Zero budget returns empty |
+| 13 | test_empty_content | Flags entries with empty content |
+| 14 | test_short_content | Flags entries with <50 chars |
+| 15 | test_duplicate_content | Flags duplicate entries |
+| 16 | test_repetitive_content | Flags >50% same character |
+| 17 | test_clean_pass | Valid entries produce no warnings |
+| 18 | test_total_size_warning | Warns when total size exceeds 500KB |
+| 19 | test_empty_list | Empty list returns no warnings |
+| 20 | test_load_save_roundtrip | Save then load preserves entries |
+| 21 | test_load_nonexistent | Nonexistent dir returns empty KnowledgeBase |
+| 22 | test_load_corrupt_json | Corrupt JSON returns empty KnowledgeBase |
+| 23 | test_add_entries_appends | add_entries appends to existing entries |
+
+---
+
+## test_worker.py — 13 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -77,10 +107,15 @@ Version: **0.1.0** | Total tests: **71** | Status: **All passing**
 | 6 | test_update_memory | Memory appends and persists to disk |
 | 7 | test_record_performance | Performance records persist to disk |
 | 8 | test_chat | Chat calls router and updates memory |
+| 9 | test_build_system_prompt_with_knowledge | Knowledge entries appear in prompt |
+| 10 | test_build_system_prompt_knowledge_with_query | Search narrows knowledge with query |
+| 11 | test_build_system_prompt_no_knowledge | Without knowledge_base, prompt works (backward compat) |
+| 12 | test_knowledge_and_memory_budget_sharing | Both knowledge and memory fit within budget |
+| 13 | test_chat_passes_query_to_prompt | User message flows as query to build_system_prompt |
 
 ---
 
-## test_hr.py — 8 tests
+## test_hr.py — 21 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -92,10 +127,23 @@ Version: **0.1.0** | Total tests: **71** | Status: **All passing**
 | 6 | test_fire_worker | Requires confirm=True, removes directory |
 | 7 | test_fire_nonexistent | Missing worker → WorkerNotFound |
 | 8 | test_promote | Increments level, caps at 5 |
+| 9 | test_train_from_text_file | Trains from .txt file, creates knowledge entries |
+| 10 | test_train_from_markdown | Trains from .md file |
+| 11 | test_train_from_pdf | Trains from PDF (mocked pypdf) |
+| 12 | test_train_from_document_not_found | Missing file → TrainingError |
+| 13 | test_train_from_unsupported_extension | Bad extension → TrainingError |
+| 14 | test_train_from_document_stores_chunks | Chunks persisted to knowledge.json |
+| 15 | test_train_from_url_success | Web page training with mocked HTTP |
+| 16 | test_train_from_url_not_html | Non-HTML content type → TrainingError |
+| 17 | test_train_from_url_network_error | Network error → TrainingError |
+| 18 | test_train_from_url_stores_chunks | URL chunks persisted |
+| 19 | test_train_from_youtube_playlist | Playlist extracts video IDs, processes each |
+| 20 | test_train_from_youtube_playlist_max_cap | Playlist caps at max_videos |
+| 21 | test_train_from_youtube_raises_training_error | YouTube failure raises TrainingError |
 
 ---
 
-## test_cli.py — 14 tests
+## test_cli.py — 19 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -113,6 +161,11 @@ Version: **0.1.0** | Total tests: **71** | Status: **All passing**
 | 12 | test_chat_quit_command | input="quit", exit 0, "Bye" |
 | 13 | test_chat_sends_message | Mocked router, response in output |
 | 14 | test_train_no_source | exit 1, "Specify a training source" |
+| 15 | test_train_document | --document calls train_from_document |
+| 16 | test_train_url | --url calls train_from_url |
+| 17 | test_knowledge_command | Shows knowledge entry summary |
+| 18 | test_knowledge_search | --search filters knowledge entries |
+| 19 | test_knowledge_empty | "no knowledge base entries" when empty |
 
 ---
 
@@ -134,10 +187,11 @@ Version: **0.1.0** | Total tests: **71** | Status: **All passing**
 
 ---
 
-## Coverage Gaps (known, acceptable for v0.1)
+## Coverage Gaps (known, acceptable for v0.2)
 
-- **YouTube training pipeline:** No automated tests (requires yt-dlp + whisper)
+- **YouTube training pipeline:** No automated tests for actual download/transcribe (requires yt-dlp + whisper)
+- **PDF training:** Uses mocked pypdf in tests (real PDF parsing tested manually)
 
 ---
 
-Total tests: **71** | All passing
+Total tests: **117** | All passing

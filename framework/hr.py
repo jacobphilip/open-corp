@@ -7,7 +7,8 @@ from pathlib import Path
 import yaml
 
 from framework.config import ProjectConfig
-from framework.exceptions import WorkerNotFound
+from framework.exceptions import TrainingError, WorkerNotFound
+from framework.knowledge import KnowledgeBase, KnowledgeEntry, chunk_text, validate_knowledge
 from framework.worker import Worker
 
 
@@ -145,14 +146,20 @@ class HR:
         """Download, transcribe, and extract knowledge from a YouTube video.
 
         Requires optional deps: yt-dlp, openai-whisper. Returns status message.
+        Supports playlists (URLs containing 'list=' or '/playlist').
         """
+        import subprocess
+
+        # Playlist detection
+        if "list=" in url or "/playlist" in url:
+            return self._train_from_playlist(worker_name, url)
+
         worker_dir = self.workers_dir / worker_name
         if not worker_dir.exists():
             raise WorkerNotFound(worker_name)
 
         # Check for yt-dlp
         try:
-            import subprocess
             result = subprocess.run(
                 ["yt-dlp", "--version"],
                 capture_output=True, text=True, timeout=10,
@@ -160,20 +167,19 @@ class HR:
             if result.returncode != 0:
                 raise FileNotFoundError
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            return "yt-dlp not installed. Run: pip install yt-dlp"
+            raise TrainingError(url, "yt-dlp not installed. Run: pip install yt-dlp")
 
         # Check for whisper
         try:
             import whisper  # noqa: F401
         except ImportError:
-            return "openai-whisper not installed. Run: pip install openai-whisper"
+            raise TrainingError(url, "openai-whisper not installed. Run: pip install openai-whisper")
 
         # Create knowledge base directory
         kb_dir = worker_dir / "knowledge_base"
         kb_dir.mkdir(exist_ok=True)
 
         # Download audio
-        import subprocess
         audio_path = kb_dir / "audio.mp3"
         dl_result = subprocess.run(
             [
@@ -185,35 +191,195 @@ class HR:
             capture_output=True, text=True, timeout=300,
         )
         if dl_result.returncode != 0:
-            return f"Download failed: {dl_result.stderr[:200]}"
+            raise TrainingError(url, f"Download failed: {dl_result.stderr[:200]}")
 
         # Transcribe
         model = whisper.load_model("small")
         result = model.transcribe(str(audio_path))
         transcript = result.get("text", "")
 
-        # Save transcript
-        transcript_path = kb_dir / "transcript.txt"
-        transcript_path.write_text(transcript)
+        # Chunk and store via KnowledgeBase
+        kb = KnowledgeBase.load(kb_dir)
+        chunks = chunk_text(transcript[:50000])
+        entries = [
+            KnowledgeEntry(
+                source=url, type="youtube_transcript",
+                content=chunk, chunk_index=i,
+            )
+            for i, chunk in enumerate(chunks)
+        ]
+        kb.add_entries(entries)
 
-        # Save as knowledge entry
-        knowledge = {
-            "source": url,
-            "type": "youtube_transcript",
-            "content": transcript[:50000],  # Cap at ~50k chars
-        }
-        knowledge_path = kb_dir / "knowledge.json"
-        existing = []
-        if knowledge_path.exists():
-            try:
-                existing = json.loads(knowledge_path.read_text())
-            except json.JSONDecodeError:
-                pass
-        existing.append(knowledge)
-        knowledge_path.write_text(json.dumps(existing, indent=2))
+        # Save raw transcript
+        (kb_dir / "transcript.txt").write_text(transcript)
 
         # Clean up audio file
         if audio_path.exists():
             audio_path.unlink()
 
-        return f"Trained from YouTube: {len(transcript)} chars transcribed"
+        warnings = validate_knowledge(kb.entries)
+        msg = f"Trained from YouTube: {len(transcript)} chars transcribed, {len(chunks)} chunks"
+        if warnings:
+            msg += f"\nWarnings: {'; '.join(warnings)}"
+        return msg
+
+    def _train_from_playlist(self, worker_name: str, url: str, max_videos: int = 20) -> str:
+        """Extract video URLs from a playlist and train on each."""
+        import subprocess
+
+        worker_dir = self.workers_dir / worker_name
+        if not worker_dir.exists():
+            raise WorkerNotFound(worker_name)
+
+        # Extract video URLs
+        result = subprocess.run(
+            ["yt-dlp", "--flat-playlist", "--dump-json", url],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            raise TrainingError(url, f"Playlist extraction failed: {result.stderr[:200]}")
+
+        video_urls = []
+        for line in result.stdout.strip().split("\n"):
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line)
+                video_id = data.get("id", "")
+                if video_id:
+                    video_urls.append(f"https://www.youtube.com/watch?v={video_id}")
+            except json.JSONDecodeError:
+                continue
+
+        if not video_urls:
+            raise TrainingError(url, "No videos found in playlist")
+
+        # Cap at max_videos
+        video_urls = video_urls[:max_videos]
+
+        results = []
+        for video_url in video_urls:
+            try:
+                msg = self.train_from_youtube(worker_name, video_url)
+                results.append(msg)
+            except TrainingError as e:
+                results.append(f"Skipped {video_url}: {e.reason}")
+
+        return f"Playlist training complete: {len(results)}/{len(video_urls)} videos processed"
+
+    def train_from_document(self, worker_name: str, file_path: str) -> str:
+        """Train a worker from a local document (PDF, markdown, text).
+
+        Supports: .pdf, .md, .txt, .rst, .csv
+        """
+        worker_dir = self.workers_dir / worker_name
+        if not worker_dir.exists():
+            raise WorkerNotFound(worker_name)
+
+        path = Path(file_path)
+        if not path.exists():
+            raise TrainingError(file_path, "File not found")
+
+        ext = path.suffix.lower()
+        if ext == ".pdf":
+            content = self._read_pdf(path)
+            doc_type = "pdf"
+        elif ext in (".md", ".txt", ".rst", ".csv"):
+            try:
+                content = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                raise TrainingError(file_path, "Cannot read file as UTF-8 text")
+            doc_type = "markdown" if ext == ".md" else "text"
+        else:
+            raise TrainingError(file_path, f"Unsupported file extension: {ext}")
+
+        if not content or not content.strip():
+            raise TrainingError(file_path, "File is empty")
+
+        # Chunk and store
+        kb_dir = worker_dir / "knowledge_base"
+        kb = KnowledgeBase.load(kb_dir)
+        chunks = chunk_text(content)
+        entries = [
+            KnowledgeEntry(
+                source=file_path, type=doc_type,
+                content=chunk, title=path.name, chunk_index=i,
+            )
+            for i, chunk in enumerate(chunks)
+        ]
+        kb.add_entries(entries)
+
+        warnings = validate_knowledge(kb.entries)
+        msg = f"Trained from {path.name}: {len(content)} chars, {len(chunks)} chunks"
+        if warnings:
+            msg += f"\nWarnings: {'; '.join(warnings)}"
+        return msg
+
+    def _read_pdf(self, path: Path) -> str:
+        """Extract text from a PDF file using pypdf."""
+        try:
+            from pypdf import PdfReader
+        except ImportError:
+            raise TrainingError(str(path), "pypdf not installed. Run: pip install pypdf")
+
+        try:
+            reader = PdfReader(str(path))
+            pages = [page.extract_text() or "" for page in reader.pages]
+            return "\n\n".join(pages)
+        except Exception as e:
+            raise TrainingError(str(path), f"PDF read error: {e}")
+
+    def train_from_url(self, worker_name: str, url: str) -> str:
+        """Train a worker from a web page.
+
+        Fetches HTML and converts to clean text via html2text.
+        """
+        import httpx
+
+        worker_dir = self.workers_dir / worker_name
+        if not worker_dir.exists():
+            raise WorkerNotFound(worker_name)
+
+        try:
+            import html2text
+        except ImportError:
+            raise TrainingError(url, "html2text not installed. Run: pip install html2text")
+
+        try:
+            response = httpx.get(url, follow_redirects=True, timeout=30.0)
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            raise TrainingError(url, f"Network error: {e}")
+
+        content_type = response.headers.get("content-type", "")
+        if "text/html" not in content_type and "text/plain" not in content_type:
+            raise TrainingError(url, f"Unsupported content type: {content_type}")
+
+        # Convert HTML to text
+        h = html2text.HTML2Text()
+        h.ignore_links = True
+        h.ignore_images = True
+        h.body_width = 0
+        text = h.handle(response.text)
+
+        if not text or not text.strip():
+            raise TrainingError(url, "Page has no text content")
+
+        # Chunk and store
+        kb_dir = worker_dir / "knowledge_base"
+        kb = KnowledgeBase.load(kb_dir)
+        chunks = chunk_text(text)
+        entries = [
+            KnowledgeEntry(
+                source=url, type="webpage",
+                content=chunk, title=url, chunk_index=i,
+            )
+            for i, chunk in enumerate(chunks)
+        ]
+        kb.add_entries(entries)
+
+        warnings = validate_knowledge(kb.entries)
+        msg = f"Trained from URL: {len(text)} chars, {len(chunks)} chunks"
+        if warnings:
+            msg += f"\nWarnings: {'; '.join(warnings)}"
+        return msg

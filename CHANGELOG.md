@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [0.2.0] — 2026-02-05
+
+### Added
+- **framework/knowledge.py** — KnowledgeBase module: chunking, keyword search, validation, persistent storage
+- **framework/exceptions.py** — TrainingError exception for training pipeline failures
+- **framework/worker.py** — Knowledge integration into system prompts with query-based search and 60/40 knowledge/memory budget split
+- **framework/hr.py** — `train_from_document()` for PDF/markdown/text files, `train_from_url()` for web pages, YouTube playlist support
+- **scripts/corp.py** — `--document` and `--url` options on train command, new `knowledge` command with `--search`
+- **tests/test_knowledge.py** — 23 tests for chunking, search, validation, KnowledgeBase CRUD
+- **tests/test_worker.py** — +5 knowledge integration tests (prompt with/without knowledge, query search, budget sharing, chat passthrough)
+- **tests/test_hr.py** — +13 training tests (document: 6, web: 4, playlist: 3)
+- **tests/test_cli.py** — +5 CLI tests (train --document, train --url, knowledge command, knowledge --search, empty knowledge)
+- **pyproject.toml** — pypdf and html2text added to [training] optional dependencies
+
+### Changed
+- `train_from_youtube()` now raises `TrainingError` instead of returning error strings
+- `train_from_youtube()` uses chunked KnowledgeBase storage instead of raw JSON
+- `build_system_prompt()` accepts optional `query` parameter for knowledge search
+- `chat()` passes user message as query to `build_system_prompt()` for relevant knowledge retrieval
+
+---
+
 ## [0.1.0] — 2026-02-05
 
 ### Added

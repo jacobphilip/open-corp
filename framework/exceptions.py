@@ -38,3 +38,12 @@ class WorkerNotFound(Exception):
     def __init__(self, name: str):
         self.name = name
         super().__init__(f"Worker '{name}' not found in workers/ directory")
+
+
+class TrainingError(Exception):
+    """Raised when worker training fails."""
+
+    def __init__(self, source: str, reason: str):
+        self.source = source
+        self.reason = reason
+        super().__init__(f"Training failed for '{source}': {reason}")

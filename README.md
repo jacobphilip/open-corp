@@ -286,12 +286,13 @@ open-corp/
 ├── requirements.txt             # Python dependencies
 │
 ├── framework/                   # Core framework code
-│   ├── exceptions.py            # Shared exceptions (BudgetExceeded, ModelUnavailable, etc.)
+│   ├── exceptions.py            # Shared exceptions (BudgetExceeded, ModelUnavailable, TrainingError, etc.)
 │   ├── config.py                # Project configuration loader (charter.yaml + .env)
 │   ├── accountant.py            # Budget guardrail (runs before every API call)
 │   ├── router.py                # Model selection, OpenRouter integration, tier fallback
-│   ├── worker.py                # Worker class (profile, memory, skills, chat)
-│   └── hr.py                    # Hiring, training, firing, promoting workers
+│   ├── knowledge.py             # Knowledge base: chunking, keyword search, validation
+│   ├── worker.py                # Worker class (profile, memory, knowledge, skills, chat)
+│   └── hr.py                    # Hiring, training (document/web/YouTube), firing, promoting
 │
 ├── scripts/
 │   ├── corp.py                  # CLI — status, budget, workers, hire, chat, train
@@ -301,13 +302,16 @@ open-corp/
 │   ├── researcher/              # Research specialist
 │   └── content-repurposer/      # Content transformation specialist
 │
-├── tests/                       # 38 tests (pytest + respx)
+├── tests/                       # 117 tests (pytest + respx)
 │   ├── conftest.py              # Shared fixtures
 │   ├── test_config.py           # 7 tests
 │   ├── test_accountant.py       # 9 tests
-│   ├── test_router.py           # 6 tests
-│   ├── test_worker.py           # 8 tests
-│   └── test_hr.py               # 8 tests
+│   ├── test_router.py           # 14 tests
+│   ├── test_worker.py           # 13 tests
+│   ├── test_hr.py               # 21 tests
+│   ├── test_cli.py              # 19 tests
+│   ├── test_knowledge.py        # 23 tests
+│   └── test_telegram_bot.py     # 11 tests
 │
 ├── projects/                    # YOUR projects go here
 │   └── .gitkeep
@@ -350,8 +354,8 @@ These principles are encoded in the `CLAUDE.md` file that your LLM reads automat
 
 | Version | What's New |
 |---------|------------|
-| **v0.1** (current) | Core framework, CLI, Telegram bot, 2 worker templates, 38 tests |
-| **v0.2** | Worker training from any source (YouTube playlists, documents, web) |
+| **v0.1** | Core framework, CLI, Telegram bot, 2 worker templates, 71 tests |
+| **v0.2** (current) | Worker training from documents, web pages, YouTube playlists; knowledge search; 117 tests |
 | **v0.3** | GUI installer and dashboard (optional — CLI still primary) |
 | **v0.4** | Automated scheduling and worker coordination |
 | **v0.5** | Board of Advisors wiring, broker integrations |

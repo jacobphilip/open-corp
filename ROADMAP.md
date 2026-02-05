@@ -1,6 +1,6 @@
 # Roadmap — open-corp
 
-Current version: **0.1.0**
+Current version: **0.2.0**
 
 ---
 
@@ -22,15 +22,18 @@ Status: **Complete**
 
 ---
 
-## v0.2 — Worker Training & Knowledge
+## v0.2.0 — Worker Training & Knowledge
 
-Status: **Planned**
+Status: **Complete**
 
-- [ ] Worker training from documents (PDF, markdown, text)
-- [ ] Worker training from web pages
-- [ ] Knowledge base search and retrieval
-- [ ] Multi-video YouTube playlist training
-- [ ] Training quality validation
+- [x] Worker training from documents (PDF, markdown, text) via `train_from_document()`
+- [x] Worker training from web pages via `train_from_url()`
+- [x] Knowledge base search and retrieval (keyword matching, budget-aware)
+- [x] Multi-video YouTube playlist training (up to 20 videos)
+- [x] Training quality validation (empty, short, duplicate, repetitive, size limit)
+- [x] Knowledge integrated into worker system prompts with query-based search
+- [x] CLI: `train --document`, `train --url`, `knowledge` command with `--search`
+- [x] Tests — 117 tests, all passing
 
 ---
 

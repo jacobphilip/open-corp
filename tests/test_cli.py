@@ -1,10 +1,13 @@
 """Tests for scripts/corp.py CLI."""
 
+from unittest.mock import patch
+
 import httpx
 import pytest
 import respx
 from click.testing import CliRunner
 
+from framework.exceptions import TrainingError
 from framework.router import OPENROUTER_API_URL
 from scripts.corp import cli
 
@@ -135,3 +138,75 @@ class TestCLITrain:
         result = runner.invoke(cli, ["--project-dir", str(tmp_project), "train", "trainee"])
         assert result.exit_code == 1
         assert "Specify a training source" in result.output
+
+    def test_train_document(self, runner, tmp_project, create_worker):
+        """--document calls train_from_document, exit 0."""
+        create_worker("doc_trainee")
+        doc = tmp_project / "training.txt"
+        doc.write_text("Training content with enough text to be meaningful for the worker's knowledge base.")
+
+        with patch("framework.hr.HR.train_from_document", return_value="Trained from training.txt: 80 chars, 1 chunks"):
+            result = runner.invoke(
+                cli, ["--project-dir", str(tmp_project), "train", "doc_trainee", "--document", str(doc)]
+            )
+        assert result.exit_code == 0
+        assert "Trained from training.txt" in result.output
+
+    def test_train_url(self, runner, tmp_project, create_worker):
+        """--url calls train_from_url, exit 0."""
+        create_worker("url_trainee")
+
+        with patch("framework.hr.HR.train_from_url", return_value="Trained from URL: 500 chars, 1 chunks"):
+            result = runner.invoke(
+                cli, ["--project-dir", str(tmp_project), "train", "url_trainee", "--url", "https://example.com"]
+            )
+        assert result.exit_code == 0
+        assert "Trained from URL" in result.output
+
+
+class TestCLIKnowledge:
+    def test_knowledge_command(self, runner, tmp_project, create_worker):
+        """Shows knowledge entry summary."""
+        create_worker("knowledgeable")
+        # Create knowledge entries
+        kb_dir = tmp_project / "workers" / "knowledgeable" / "knowledge_base"
+        kb_dir.mkdir()
+        import json
+        from framework.knowledge import KnowledgeEntry
+        from dataclasses import asdict
+        entries = [
+            KnowledgeEntry(source="doc.txt", type="text", content="Some knowledge content here.", chunk_index=0),
+        ]
+        (kb_dir / "knowledge.json").write_text(json.dumps([asdict(e) for e in entries]))
+
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "knowledge", "knowledgeable"])
+        assert result.exit_code == 0
+        assert "1 knowledge entries" in result.output
+        assert "doc.txt" in result.output
+
+    def test_knowledge_search(self, runner, tmp_project, create_worker):
+        """--search filters knowledge entries."""
+        create_worker("searcher")
+        kb_dir = tmp_project / "workers" / "searcher" / "knowledge_base"
+        kb_dir.mkdir()
+        import json
+        from framework.knowledge import KnowledgeEntry
+        from dataclasses import asdict
+        entries = [
+            KnowledgeEntry(source="python.txt", type="text", content="Python is great for data science.", chunk_index=0),
+            KnowledgeEntry(source="js.txt", type="text", content="JavaScript for web development.", chunk_index=0),
+        ]
+        (kb_dir / "knowledge.json").write_text(json.dumps([asdict(e) for e in entries]))
+
+        result = runner.invoke(
+            cli, ["--project-dir", str(tmp_project), "knowledge", "searcher", "--search", "Python"]
+        )
+        assert result.exit_code == 0
+        assert "matching entries" in result.output
+
+    def test_knowledge_empty(self, runner, tmp_project, create_worker):
+        """Shows message when no knowledge entries exist."""
+        create_worker("empty_brain")
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "knowledge", "empty_brain"])
+        assert result.exit_code == 0
+        assert "no knowledge base entries" in result.output

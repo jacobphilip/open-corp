@@ -1,11 +1,15 @@
 """Tests for framework/hr.py."""
 
 import json
+from unittest.mock import patch, MagicMock
 
+import httpx
 import pytest
+import respx
 import yaml
 
-from framework.exceptions import WorkerNotFound
+from framework.exceptions import TrainingError, WorkerNotFound
+from framework.knowledge import KnowledgeBase
 from framework.hr import HR
 
 
@@ -107,3 +111,193 @@ class TestHR:
         for _ in range(10):
             new_level = hr.promote("promo")
         assert new_level == 5
+
+
+class TestTrainFromDocument:
+    def test_train_from_text_file(self, tmp_project, config):
+        """Trains from a .txt file, creates knowledge entries."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("doc1", role="reader")
+
+        txt_file = tmp_project / "sample.txt"
+        txt_file.write_text("This is a sample text document with enough content to pass validation checks easily.")
+
+        result = hr.train_from_document("doc1", str(txt_file))
+        assert "Trained from sample.txt" in result
+        assert "1 chunks" in result
+
+    def test_train_from_markdown(self, tmp_project, config):
+        """Trains from a .md file."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("doc2", role="reader")
+
+        md_file = tmp_project / "notes.md"
+        md_file.write_text("# Heading\n\nSome markdown content with enough to be meaningful for the knowledge base.")
+
+        result = hr.train_from_document("doc2", str(md_file))
+        assert "Trained from notes.md" in result
+
+    def test_train_from_pdf(self, tmp_project, config):
+        """Trains from a PDF (mocking pypdf)."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("doc3", role="reader")
+
+        pdf_file = tmp_project / "report.pdf"
+        pdf_file.write_bytes(b"fake pdf content")
+
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = "Extracted PDF text with enough content for validation checks."
+        mock_reader = MagicMock()
+        mock_reader.pages = [mock_page]
+
+        with patch("framework.hr.PdfReader", mock_reader.__class__, create=True):
+            with patch.dict("sys.modules", {"pypdf": MagicMock()}):
+                # Patch the actual import inside _read_pdf
+                with patch("framework.hr.HR._read_pdf", return_value="Extracted PDF text with enough content for validation checks."):
+                    result = hr.train_from_document("doc3", str(pdf_file))
+        assert "Trained from report.pdf" in result
+
+    def test_train_from_document_not_found(self, tmp_project, config):
+        """Raises TrainingError for missing file."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("doc4", role="reader")
+
+        with pytest.raises(TrainingError, match="File not found"):
+            hr.train_from_document("doc4", "/nonexistent/file.txt")
+
+    def test_train_from_unsupported_extension(self, tmp_project, config):
+        """Raises TrainingError for unsupported extensions."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("doc5", role="reader")
+
+        bad_file = tmp_project / "data.xlsx"
+        bad_file.write_bytes(b"fake xlsx")
+
+        with pytest.raises(TrainingError, match="Unsupported file extension"):
+            hr.train_from_document("doc5", str(bad_file))
+
+    def test_train_from_document_stores_chunks(self, tmp_project, config):
+        """Chunks are persisted to knowledge.json."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("doc6", role="reader")
+
+        txt_file = tmp_project / "big.txt"
+        # Write enough content to create multiple chunks
+        txt_file.write_text(("Paragraph content here. " * 50 + "\n\n") * 10)
+
+        hr.train_from_document("doc6", str(txt_file))
+
+        kb_dir = tmp_project / "workers" / "doc6" / "knowledge_base"
+        kb = KnowledgeBase.load(kb_dir)
+        assert len(kb.entries) >= 1
+        assert all(e.type == "text" for e in kb.entries)
+
+
+class TestTrainFromURL:
+    def test_train_from_url_success(self, tmp_project, config):
+        """Successfully trains from a web page (mocked HTTP)."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("web1", role="reader")
+
+        html = "<html><body><h1>Title</h1><p>Web page content with enough text for knowledge base validation.</p></body></html>"
+        with respx.mock:
+            respx.get("https://example.com/article").mock(
+                return_value=httpx.Response(200, text=html, headers={"content-type": "text/html"})
+            )
+            result = hr.train_from_url("web1", "https://example.com/article")
+
+        assert "Trained from URL" in result
+
+    def test_train_from_url_not_html(self, tmp_project, config):
+        """Raises TrainingError for non-HTML content type."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("web2", role="reader")
+
+        with respx.mock:
+            respx.get("https://example.com/image.png").mock(
+                return_value=httpx.Response(200, content=b"PNG", headers={"content-type": "image/png"})
+            )
+            with pytest.raises(TrainingError, match="Unsupported content type"):
+                hr.train_from_url("web2", "https://example.com/image.png")
+
+    def test_train_from_url_network_error(self, tmp_project, config):
+        """Raises TrainingError on network error."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("web3", role="reader")
+
+        with respx.mock:
+            respx.get("https://example.com/broken").mock(side_effect=httpx.ConnectError("refused"))
+            with pytest.raises(TrainingError, match="Network error"):
+                hr.train_from_url("web3", "https://example.com/broken")
+
+    def test_train_from_url_stores_chunks(self, tmp_project, config):
+        """Chunks from URL are persisted."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("web4", role="reader")
+
+        html = "<html><body>" + "<p>Paragraph of text. </p>" * 100 + "</body></html>"
+        with respx.mock:
+            respx.get("https://example.com/long").mock(
+                return_value=httpx.Response(200, text=html, headers={"content-type": "text/html"})
+            )
+            hr.train_from_url("web4", "https://example.com/long")
+
+        kb = KnowledgeBase.load(tmp_project / "workers" / "web4" / "knowledge_base")
+        assert len(kb.entries) >= 1
+        assert all(e.type == "webpage" for e in kb.entries)
+
+
+class TestTrainFromPlaylist:
+    def test_train_from_youtube_playlist(self, tmp_project, config):
+        """Playlist URL extracts video IDs and processes each."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("pl1", role="watcher")
+
+        playlist_json = '\n'.join([
+            json.dumps({"id": "vid1", "title": "Video 1"}),
+            json.dumps({"id": "vid2", "title": "Video 2"}),
+        ])
+
+        with patch("subprocess.run") as mock_run:
+            # First call: playlist extraction
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=playlist_json, stderr=""
+            )
+            # Mock train_from_youtube for individual videos
+            with patch.object(hr, "train_from_youtube", side_effect=[
+                "Trained video 1", "Trained video 2"
+            ]) as mock_train:
+                result = hr._train_from_playlist("pl1", "https://youtube.com/playlist?list=PL123")
+
+        assert "2/2 videos processed" in result
+
+    def test_train_from_youtube_playlist_max_cap(self, tmp_project, config):
+        """Playlist caps at max_videos."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("pl2", role="watcher")
+
+        # 25 videos in playlist
+        playlist_json = '\n'.join([
+            json.dumps({"id": f"vid{i}", "title": f"Video {i}"})
+            for i in range(25)
+        ])
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=playlist_json, stderr=""
+            )
+            with patch.object(hr, "train_from_youtube", return_value="OK") as mock_train:
+                result = hr._train_from_playlist("pl2", "https://youtube.com/playlist?list=PL456", max_videos=20)
+
+        # Should only process 20
+        assert mock_train.call_count == 20
+        assert "20/20 videos processed" in result
+
+    def test_train_from_youtube_raises_training_error(self, tmp_project, config):
+        """train_from_youtube raises TrainingError (not returns string) on failure."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("pl3", role="watcher")
+
+        with pytest.raises(TrainingError, match="yt-dlp not installed"):
+            with patch("subprocess.run", side_effect=FileNotFoundError):
+                hr.train_from_youtube("pl3", "https://youtube.com/watch?v=test")
