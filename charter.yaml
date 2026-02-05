@@ -1,0 +1,64 @@
+# Project Charter — [Project Name]
+# This file defines your project's configuration.
+# Your LLM reads this to understand how to operate.
+
+project:
+  name: "My Project"
+  owner: "Your Name"
+  created: "2026-02-05"
+  mission: "Define your project's purpose here"
+
+# Budget configuration (Accountant enforces this)
+budget:
+  daily_limit: 3.00  # USD per day
+  currency: "USD"
+  thresholds:
+    normal: 0.60      # Under 60% = green light
+    caution: 0.80     # 60-80% = prefer cheaper models
+    austerity: 0.95   # 80-95% = essential only
+    critical: 1.00    # 95-100% = pause and notify owner
+  # Budget resets daily at midnight UTC
+
+# Board of Advisors (optional — remove if not using)
+board:
+  enabled: false  # Set to true after configuring API keys
+  members:
+    grok:
+      role: "Real-time intelligence"
+      consult_for: ["market data", "current events", "price checks", "news"]
+    chatgpt:
+      role: "Strategy validation"
+      consult_for: ["stress-testing", "edge cases", "structured analysis"]
+    claude:
+      role: "Deep reasoning"
+      consult_for: ["architecture", "synthesis", "complex decisions"]
+
+# Model routing (which models workers can use)
+# NOTE: Model availability changes. Check openrouter.ai/models for current options.
+# The Accountant enforces budget regardless of which models you configure.
+models:
+  tiers:
+    cheap:
+      models: ["deepseek/deepseek-chat", "mistralai/mistral-tiny", "qwen/qwen-2.5-72b-instruct"]
+      for: "Simple queries, basic chat, quick lookups, most worker tasks"
+    mid:
+      models: ["anthropic/claude-sonnet-4-20250514", "mistralai/mistral-medium"]
+      for: "Complex analysis, code generation"
+    premium:
+      models: ["anthropic/claude-opus-4-5-20251101"]
+      for: "Board-level decisions only, requires explicit approval"
+  # Fallback: If primary model unavailable, router.py should gracefully degrade to next tier
+
+# Git sync
+git:
+  auto_commit: true
+  auto_push: true
+  remote: "origin"
+  branch: "main"
+
+# Worker defaults
+worker_defaults:
+  starting_level: 1       # Intern
+  max_context_tokens: 2000
+  model: "deepseek/deepseek-chat"
+  honest_ai: true         # NEVER fabricate data (non-negotiable)
