@@ -2,9 +2,7 @@
 
 ## In Progress
 
-- [ ] Trading example: ICT knowledge base integration
-- [ ] Trading example: Caleb automated scanning
-- [ ] Docs: Review and update for simplified model
+(none)
 
 ## Done
 
@@ -30,3 +28,4 @@
 - [x] Testing: 38 tests (config, accountant, router, worker, hr) ✓ all pass
 - [x] pyproject.toml with editable install ✓ verified
 - [x] Telegram integration ✓ verified
+- [x] Docs: CHANGELOG, ROADMAP, TEST_PLAN, README updated for v0.1 ✓ verified
