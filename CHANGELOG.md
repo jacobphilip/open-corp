@@ -24,6 +24,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **Breaking:** `Worker.chat()` returns `tuple[str, list[dict]]` instead of `str` (response text + conversation history)
 - **scripts/telegram_bot.py** — Updated to unpack `chat()` tuple return
 - **scripts/corp.py** — Chat command now maintains conversation history across messages and summarizes on exit
+- **README.md** — Claude Code repositioned as optional; CLI is the primary interface; only requirement is OpenRouter + Python
 
 ---
 

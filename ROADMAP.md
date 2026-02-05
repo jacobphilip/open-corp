@@ -4,7 +4,7 @@ Current version: **0.3.0**
 
 ---
 
-## v0.1.0 — Core Framework (current)
+## v0.1.0 — Core Framework
 
 Status: **Complete**
 
