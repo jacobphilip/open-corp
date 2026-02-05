@@ -45,3 +45,5 @@
 [2026-02-05] Grok re-validation → Model availability fluctuates. Gemini 2.0 Flash and DeepSeek V3 may not be available under those exact names on OpenRouter. Implement graceful fallback in router.py. Use model-agnostic language in docs — specify tiers (cheap/mid/premium) not specific model names that may change.
 
 [2026-02-05] Grok re-validation → Competitive landscape confirmed: CrewAI, MetaGPT, AutoGPT, SuperAGI all exist but none match our combo of terminal accessibility + hard budget guardrails + multi-AI advisors + model flexibility. CrewAI and AutoGPT are closest on accessibility but lack cost safety nets.
+
+[2026-02-05] v0.1 implementation → Don't reference dataclass instances to get field defaults (e.g. `BudgetConfig().thresholds` fails if there are required fields). Use inline default dicts instead.

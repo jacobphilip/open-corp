@@ -2,18 +2,9 @@
 
 ## In Progress
 
-- [ ] Core framework: Accountant guardrail (wraps all API calls, enforces budget)
-- [ ] Core framework: Worker base class
-- [ ] Core framework: Model router with graceful fallback (if model unavailable, try next tier)
-- [ ] Core framework: Project config loader (charter.yaml)
-- [ ] Scripts: corp.py CLI (chat, hire, status)
 - [ ] Trading example: ICT knowledge base integration
 - [ ] Trading example: Caleb automated scanning
-- [ ] Telegram integration: Same interface, different channel
-- [ ] Non-trading template: Add researcher or content-repurposer as front-loaded value
 - [ ] Docs: Review and update for simplified model
-- [ ] Testing: Unit tests for Accountant guardrail
-- [ ] Testing: Integration test for hire-from-template flow
 
 ## Done
 
@@ -27,3 +18,15 @@
 - [x] .gitignore ✓ verified
 - [x] requirements.txt ✓ verified
 - [x] Simplified architecture: removed CEO agent abstraction ✓ verified
+- [x] Core framework: exceptions.py ✓ verified (38 tests pass)
+- [x] Core framework: config.py — ProjectConfig loader ✓ verified
+- [x] Core framework: accountant.py — budget guardrail with TinyDB ✓ verified
+- [x] Core framework: router.py — OpenRouter with tier fallback ✓ verified
+- [x] Core framework: worker.py — worker base class ✓ verified
+- [x] Core framework: hr.py — hire/fire/promote/train ✓ verified
+- [x] Scripts: corp.py CLI (status, budget, workers, hire, chat, train) ✓ verified
+- [x] Scripts: telegram_bot.py ✓ verified
+- [x] Templates: researcher + content-repurposer ✓ verified
+- [x] Testing: 38 tests (config, accountant, router, worker, hr) ✓ all pass
+- [x] pyproject.toml with editable install ✓ verified
+- [x] Telegram integration ✓ verified
