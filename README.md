@@ -173,30 +173,29 @@ OPENROUTER_API_KEY=sk-or-v1-your-actual-key-here
 
 Save and close (Ctrl+X, then Y, then Enter).
 
-### Step 3: Create Your First Operation
+### Step 3: Install the Framework
 
 ```bash
-# Start Claude Code in the open-corp directory
-claude
-
-# Inside Claude Code, say:
-# "Initialize a new operation called my-project"
+# Create a virtual environment and install
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
 
-Claude Code reads the CLAUDE.md file and understands the framework. It will:
-- Create your project directory
-- Set up the Boss (CEO) and Accountant (CFO)
-- Initialize budget tracking
-- Connect to your GitHub repo
-
-### Step 4: Start Giving Tasks
+### Step 4: Hire a Worker and Start
 
 ```bash
-# Talk to the Boss:
-python scripts/corp.py chat
+# Check project status
+python scripts/corp.py status
 
-# Or talk to a specific worker:
-python scripts/corp.py chat ict
+# Hire a researcher from template
+python scripts/corp.py hire researcher my-researcher
+
+# See your workers
+python scripts/corp.py workers
+
+# Chat with your worker (requires OPENROUTER_API_KEY in .env)
+python scripts/corp.py chat my-researcher
 ```
 
 That's it. You're the Owner. Start giving orders.
@@ -278,53 +277,43 @@ The `paper_trading: true` setting in the charter cannot be changed to `false` wi
 open-corp/
 ├── CLAUDE.md                    # Agentic engineering philosophy (read by Claude Code)
 ├── README.md                    # You're reading this
+├── CHANGELOG.md                 # Release history
+├── ROADMAP.md                   # What's planned
+├── TEST_PLAN.md                 # Test inventory
+├── charter.yaml                 # Project configuration (budget, models, worker defaults)
 ├── .env.example                 # Template for API keys
+├── pyproject.toml               # Python packaging and install config
 ├── requirements.txt             # Python dependencies
-├── setup.py                     # Installation script
 │
 ├── framework/                   # Core framework code
+│   ├── exceptions.py            # Shared exceptions (BudgetExceeded, ModelUnavailable, etc.)
+│   ├── config.py                # Project configuration loader (charter.yaml + .env)
 │   ├── accountant.py            # Budget guardrail (runs before every API call)
-│   ├── worker.py                # Base worker class
-│   ├── hr.py                    # Hiring, training, firing workers
-│   ├── board.py                 # Board of Advisors (Grok/ChatGPT/Claude)
-│   ├── router.py                # Model selection and cost optimization
-│   └── config.py                # Project configuration loader
+│   ├── router.py                # Model selection, OpenRouter integration, tier fallback
+│   ├── worker.py                # Worker class (profile, memory, skills, chat)
+│   └── hr.py                    # Hiring, training, firing, promoting workers
 │
 ├── scripts/
-│   ├── corp.py                  # Main CLI — chat, hire, status
-│   ├── init_project.py          # Initialize a new project
-│   └── budget_report.py         # Generate financial reports
+│   ├── corp.py                  # CLI — status, budget, workers, hire, chat, train
+│   └── telegram_bot.py          # Telegram bot interface
 │
 ├── templates/                   # Starter worker templates
-│   ├── researcher/
-│   ├── writer/
-│   ├── analyst/
-│   └── trader/
+│   ├── researcher/              # Research specialist
+│   └── content-repurposer/      # Content transformation specialist
 │
-├── examples/
-│   └── trading-desk/            # Full trading desk example
-│       ├── charter.yaml         # Project config
-│       ├── workers/
-│       │   ├── ict/             # ICT master strategist
-│       │   └── caleb/           # Junior analyst
-│       ├── knowledge_base/      # Extracted trading strategies
-│       ├── pipelines/
-│       │   └── youtube.py       # YouTube → transcribe → extract
-│       └── systemd/             # Timer configs for automation
+├── tests/                       # 38 tests (pytest + respx)
+│   ├── conftest.py              # Shared fixtures
+│   ├── test_config.py           # 7 tests
+│   ├── test_accountant.py       # 9 tests
+│   ├── test_router.py           # 6 tests
+│   ├── test_worker.py           # 8 tests
+│   └── test_hr.py               # 8 tests
 │
 ├── projects/                    # YOUR projects go here
 │   └── .gitkeep
 │
-├── tasks/
-│   ├── todo.md                  # Task tracker
-│   └── lessons.md               # Learnings from mistakes
-│
-└── docs/
-    ├── GETTING_STARTED.md       # Detailed walkthrough
-    ├── HIRING_GUIDE.md          # How to hire workers
-    ├── BOARD_SETUP.md           # Setting up Grok/ChatGPT as advisors
-    ├── BUDGET_GUIDE.md          # Understanding cost control
-    └── EXAMPLES.md              # More example projects
+├── todo.md                      # Task tracker
+└── lessons.md                   # Learnings from mistakes
 ```
 
 ---
@@ -361,14 +350,14 @@ These principles are encoded in the `CLAUDE.md` file that your LLM reads automat
 
 | Version | What's New |
 |---------|------------|
-| **v0.1** (current) | Core framework + trading desk example |
-| **v0.2** | Worker training from any source (YouTube, documents, web) |
+| **v0.1** (current) | Core framework, CLI, Telegram bot, 2 worker templates, 38 tests |
+| **v0.2** | Worker training from any source (YouTube playlists, documents, web) |
 | **v0.3** | GUI installer and dashboard (optional — CLI still primary) |
-| **v0.4** | Live broker integration (Interactive Brokers) |
-| **v0.5** | Pre-built operation templates ("Job Hunter", "Content Repurposer", "Research Team") |
-| **v0.6** | Multi-operation management |
-| **v0.7** | Community worker marketplace (share and trade trained workers) |
-| **v1.0** | Production-ready, self-optimizing operations |
+| **v0.4** | Automated scheduling and worker coordination |
+| **v0.5** | Board of Advisors wiring, broker integrations |
+| **v1.0** | Production-ready, self-optimizing operations, community marketplace |
+
+See [ROADMAP.md](ROADMAP.md) for full details.
 
 ---
 
