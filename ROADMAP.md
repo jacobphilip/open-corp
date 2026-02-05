@@ -18,7 +18,7 @@ Status: **Complete**
 - [x] CLI (Click) — status, budget, workers, hire, chat, train
 - [x] Telegram bot — /start, /workers, /chat, /status, /budget
 - [x] Templates — researcher, content-repurposer
-- [x] Tests — 38 tests, all passing (pytest + respx)
+- [x] Tests — 71 tests, all passing (pytest + respx + pytest-asyncio)
 
 ---
 
