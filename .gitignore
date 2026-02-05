@@ -2,6 +2,9 @@
 .env
 .env.local
 
+# Runtime data
+data/
+
 # Python
 __pycache__/
 *.py[cod]
