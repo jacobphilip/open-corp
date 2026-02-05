@@ -1,6 +1,6 @@
 # Roadmap — open-corp
 
-Current version: **0.2.0**
+Current version: **0.3.0**
 
 ---
 
@@ -37,14 +37,16 @@ Status: **Complete**
 
 ---
 
-## v0.3 — Usability
+## v0.3.0 — Usability
 
-Status: **Planned**
+Status: **Complete**
 
-- [ ] GUI installer (one-click setup for non-technical users)
-- [ ] Web dashboard for budget monitoring
-- [ ] Improved error messages and onboarding
-- [ ] Pre-built operation templates (Job Hunter, Research Team)
+- [x] `corp init` interactive project wizard (charter.yaml, .env, directories)
+- [x] `corp inspect` project overview and worker detail view
+- [x] Multi-turn chat with conversation history and session summaries
+- [x] Improved error messages with contextual suggestions on all exceptions
+- [x] 3 new templates: job-hunter, data-analyst, content-writer
+- [x] Tests — 145 tests, all passing
 
 ---
 
@@ -55,6 +57,7 @@ Status: **Planned**
 - [ ] Scheduled task execution (cron/systemd timers)
 - [ ] Worker coordination (one worker triggers another)
 - [ ] Event-driven workflows
+- [ ] Chat history truncation for long conversations
 
 ---
 

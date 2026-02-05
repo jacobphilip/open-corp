@@ -69,7 +69,10 @@ class ProjectConfig:
         # Load charter.yaml
         charter_path = project_dir / "charter.yaml"
         if not charter_path.exists():
-            raise ConfigError(f"charter.yaml not found in {project_dir}")
+            raise ConfigError(
+                f"charter.yaml not found in {project_dir}",
+                suggestion="Run 'corp init' to create a new project.",
+            )
 
         try:
             raw = yaml.safe_load(charter_path.read_text())
@@ -82,18 +85,30 @@ class ProjectConfig:
         # Parse project section
         project = raw.get("project")
         if not project:
-            raise ConfigError("charter.yaml missing 'project' section")
+            raise ConfigError(
+                "charter.yaml missing 'project' section",
+                suggestion="Add a 'project' section with name, owner, and mission to charter.yaml.",
+            )
 
         for req in ("name", "owner", "mission"):
             if req not in project:
-                raise ConfigError(f"charter.yaml project.{req} is required")
+                raise ConfigError(
+                    f"charter.yaml project.{req} is required",
+                    suggestion=f"Add '{req}' to the project section in charter.yaml.",
+                )
 
         # Parse budget
         budget_raw = raw.get("budget")
         if not budget_raw:
-            raise ConfigError("charter.yaml missing 'budget' section")
+            raise ConfigError(
+                "charter.yaml missing 'budget' section",
+                suggestion="Add a 'budget' section with daily_limit to charter.yaml.",
+            )
         if "daily_limit" not in budget_raw:
-            raise ConfigError("charter.yaml budget.daily_limit is required")
+            raise ConfigError(
+                "charter.yaml budget.daily_limit is required",
+                suggestion="Add 'daily_limit' to the budget section in charter.yaml.",
+            )
 
         budget = BudgetConfig(
             daily_limit=float(budget_raw["daily_limit"]),

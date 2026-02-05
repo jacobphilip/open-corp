@@ -109,9 +109,10 @@ class TestWorker:
                     "usage": {"prompt_tokens": 10, "completion_tokens": 5},
                 })
             )
-            response = worker.chat("help me", router)
+            response, history = worker.chat("help me", router)
 
         assert response == "I can help!"
+        assert len(history) == 2  # user msg + assistant response
         assert len(worker.memory) == 2  # user msg + response
 
     def test_build_system_prompt_with_knowledge(self, tmp_project, config):
@@ -186,6 +187,173 @@ class TestWorker:
                     "usage": {"prompt_tokens": 10, "completion_tokens": 5},
                 })
             )
-            response = worker.chat("tell me about cooking", router)
+            response, _ = worker.chat("tell me about cooking", router)
 
         assert response == "Here's what I know about cooking."
+
+
+class TestMultiTurnChat:
+    """Tests for multi-turn chat and session summarization."""
+
+    def _mock_router_response(self, content="OK"):
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": content}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        })
+
+    def test_chat_returns_tuple(self, tmp_project, config):
+        """chat() returns (str, list[dict])."""
+        _create_worker_files(tmp_project / "workers" / "mt1")
+        worker = Worker("mt1", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(return_value=self._mock_router_response("Hi"))
+            result = worker.chat("hello", router)
+
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], str)
+        assert isinstance(result[1], list)
+
+    def test_chat_with_history(self, tmp_project, config):
+        """History messages are included in the API call."""
+        _create_worker_files(tmp_project / "workers" / "mt2")
+        worker = Worker("mt2", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        history = [
+            {"role": "user", "content": "first message"},
+            {"role": "assistant", "content": "first reply"},
+        ]
+
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_router_response("second reply"),
+            )
+            response, new_history = worker.chat("second message", router, history=history)
+
+        # Verify history was sent in the request
+        request_body = json.loads(route.calls[0].request.content)
+        messages = request_body["messages"]
+        # system + 2 history + 1 new user = 4 messages
+        assert len(messages) == 4
+        assert messages[1]["content"] == "first message"
+        assert messages[2]["content"] == "first reply"
+        assert messages[3]["content"] == "second message"
+
+    def test_chat_history_accumulates(self, tmp_project, config):
+        """Two consecutive chats produce a 4-entry history."""
+        _create_worker_files(tmp_project / "workers" / "mt3")
+        worker = Worker("mt3", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                side_effect=[
+                    self._mock_router_response("reply1"),
+                    self._mock_router_response("reply2"),
+                ],
+            )
+            _, history = worker.chat("msg1", router)
+            _, history = worker.chat("msg2", router, history=history)
+
+        assert len(history) == 4
+        assert history[0] == {"role": "user", "content": "msg1"}
+        assert history[1] == {"role": "assistant", "content": "reply1"}
+        assert history[2] == {"role": "user", "content": "msg2"}
+        assert history[3] == {"role": "assistant", "content": "reply2"}
+
+    def test_chat_without_history_backward_compat(self, tmp_project, config):
+        """history=None works (backward compat)."""
+        _create_worker_files(tmp_project / "workers" / "mt4")
+        worker = Worker("mt4", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(return_value=self._mock_router_response("OK"))
+            response, history = worker.chat("test", router, history=None)
+
+        assert response == "OK"
+        assert len(history) == 2
+
+    def test_summarize_session(self, tmp_project, config):
+        """summarize_session() calls router and returns summary text."""
+        _create_worker_files(tmp_project / "workers" / "mt5")
+        worker = Worker("mt5", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        history = [
+            {"role": "user", "content": "What's Python?"},
+            {"role": "assistant", "content": "A programming language."},
+        ]
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_router_response("Discussed Python basics."),
+            )
+            summary = worker.summarize_session(history, router)
+
+        assert summary == "Discussed Python basics."
+
+    def test_summarize_session_empty_history(self, tmp_project, config):
+        """Empty history returns empty string without API call."""
+        _create_worker_files(tmp_project / "workers" / "mt6")
+        worker = Worker("mt6", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        summary = worker.summarize_session([], router)
+        assert summary == ""
+
+    def test_summarize_session_records_memory(self, tmp_project, config):
+        """Summary is stored in worker memory as 'session_summary' type."""
+        _create_worker_files(tmp_project / "workers" / "mt7")
+        worker = Worker("mt7", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        history = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+        ]
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_router_response("Brief chat."),
+            )
+            worker.summarize_session(history, router)
+
+        assert len(worker.memory) == 1
+        assert worker.memory[0]["type"] == "session_summary"
+        assert worker.memory[0]["content"] == "Brief chat."
+
+    def test_summarize_session_api_call(self, tmp_project, config):
+        """Router is called with the conversation formatted as a summary prompt."""
+        _create_worker_files(tmp_project / "workers" / "mt8")
+        worker = Worker("mt8", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        history = [
+            {"role": "user", "content": "Q1"},
+            {"role": "assistant", "content": "A1"},
+        ]
+
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_router_response("Summary."),
+            )
+            worker.summarize_session(history, router)
+
+        assert route.call_count == 1
+        request_body = json.loads(route.calls[0].request.content)
+        # The user message should contain the conversation
+        user_msg = request_body["messages"][1]["content"]
+        assert "Q1" in user_msg
+        assert "A1" in user_msg

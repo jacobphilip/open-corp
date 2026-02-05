@@ -5,6 +5,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 import respx
+import yaml
 from click.testing import CliRunner
 
 from framework.exceptions import TrainingError
@@ -129,6 +130,7 @@ class TestCLIChat:
 
         assert result.exit_code == 0
         assert "Hello from Grace!" in result.output
+        assert "Session summary saved" in result.output
 
 
 class TestCLITrain:
@@ -210,3 +212,151 @@ class TestCLIKnowledge:
         result = runner.invoke(cli, ["--project-dir", str(tmp_project), "knowledge", "empty_brain"])
         assert result.exit_code == 0
         assert "no knowledge base entries" in result.output
+
+
+class TestCLIInit:
+    def test_init_creates_charter_and_env(self, runner, tmp_path):
+        """All inputs → charter.yaml and .env created with correct values."""
+        user_input = "My Project\nAlice\nBuild cool stuff\n5.00\nsk-or-test123\n"
+        result = runner.invoke(
+            cli, ["--project-dir", str(tmp_path), "init"], input=user_input,
+        )
+        assert result.exit_code == 0
+        assert "initialized" in result.output
+
+        charter = yaml.safe_load((tmp_path / "charter.yaml").read_text())
+        assert charter["project"]["name"] == "My Project"
+        assert charter["project"]["owner"] == "Alice"
+        assert charter["budget"]["daily_limit"] == 5.0
+
+        env_text = (tmp_path / ".env").read_text()
+        assert "sk-or-test123" in env_text
+
+    def test_init_creates_directories(self, runner, tmp_path):
+        """workers/, templates/, data/ dirs created."""
+        user_input = "Proj\nOwner\nMission\n3.00\n\n"
+        result = runner.invoke(
+            cli, ["--project-dir", str(tmp_path), "init"], input=user_input,
+        )
+        assert result.exit_code == 0
+        assert (tmp_path / "workers").is_dir()
+        assert (tmp_path / "templates").is_dir()
+        assert (tmp_path / "data").is_dir()
+
+    def test_init_warns_on_existing_charter(self, runner, tmp_path):
+        """Input 'n' → abort when charter.yaml exists."""
+        (tmp_path / "charter.yaml").write_text("existing: true")
+        result = runner.invoke(
+            cli, ["--project-dir", str(tmp_path), "init"], input="n\n",
+        )
+        assert result.exit_code == 1
+        assert "Aborted" in result.output
+
+    def test_init_overwrites_on_confirm(self, runner, tmp_path):
+        """Input 'y' → overwrites existing charter.yaml."""
+        (tmp_path / "charter.yaml").write_text("existing: true")
+        user_input = "y\nNew Project\nBob\nNew mission\n2.00\n\n"
+        result = runner.invoke(
+            cli, ["--project-dir", str(tmp_path), "init"], input=user_input,
+        )
+        assert result.exit_code == 0
+        charter = yaml.safe_load((tmp_path / "charter.yaml").read_text())
+        assert charter["project"]["name"] == "New Project"
+
+    def test_init_validates_budget(self, runner, tmp_path):
+        """Negative budget → re-prompts, then valid budget works."""
+        user_input = "Proj\nOwner\nMission\n-1\n0\n3.00\nsk-or-key\n"
+        result = runner.invoke(
+            cli, ["--project-dir", str(tmp_path), "init"], input=user_input,
+        )
+        assert result.exit_code == 0
+        charter = yaml.safe_load((tmp_path / "charter.yaml").read_text())
+        assert charter["budget"]["daily_limit"] == 3.0
+
+
+class TestCLIInspect:
+    def test_inspect_project_overview(self, runner, tmp_project, create_worker):
+        """No args → project + budget + workers."""
+        create_worker("worker1", level=2, role="analyst")
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "inspect"])
+        assert result.exit_code == 0
+        assert "Test Project" in result.output
+        assert "Budget:" in result.output
+        assert "worker1" in result.output
+        assert "analyst" in result.output
+
+    def test_inspect_project_no_workers(self, runner, tmp_project):
+        """No workers → shows 'none'."""
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "inspect"])
+        assert result.exit_code == 0
+        assert "none" in result.output
+
+    def test_inspect_worker_detail(self, runner, tmp_project, create_worker):
+        """Worker arg → profile + skills + counts."""
+        create_worker("analyst1", level=3, role="data-analyst")
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "inspect", "analyst1"])
+        assert result.exit_code == 0
+        assert "Profile:" in result.output
+        assert "Skills:" in result.output
+        assert "Level:" in result.output
+        assert "Memory:" in result.output
+
+    def test_inspect_worker_not_found(self, runner, tmp_project):
+        """Missing worker → exit 1."""
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "inspect", "nobody"])
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
+
+class TestCLIChatUpdated:
+    def _mock_response(self, content="OK"):
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": content}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        })
+
+    def test_chat_multi_turn_history(self, runner, tmp_project, create_worker):
+        """Two messages → two API calls (plus summary)."""
+        create_worker("multi")
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_response("reply"),
+            )
+            result = runner.invoke(
+                cli, ["--project-dir", str(tmp_project), "chat", "multi"],
+                input="msg1\nmsg2\nquit\n",
+            )
+        assert result.exit_code == 0
+        # 2 chat calls + 1 summary call = 3
+        assert route.call_count == 3
+
+    def test_chat_summarizes_on_quit(self, runner, tmp_project, create_worker):
+        """Session summary saved on quit."""
+        create_worker("summy")
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_response("hi"),
+            )
+            result = runner.invoke(
+                cli, ["--project-dir", str(tmp_project), "chat", "summy"],
+                input="hello\nquit\n",
+            )
+        assert result.exit_code == 0
+        assert "Session summary saved" in result.output
+
+    def test_chat_summary_failure_graceful(self, runner, tmp_project, create_worker):
+        """API error on summary → fallback message, no crash."""
+        create_worker("failsum")
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                side_effect=[
+                    self._mock_response("chat reply"),
+                    httpx.Response(500, json={"error": "server down"}),
+                ],
+            )
+            result = runner.invoke(
+                cli, ["--project-dir", str(tmp_project), "chat", "failsum"],
+                input="hello\nquit\n",
+            )
+        assert result.exit_code == 0
+        assert "Could not save session summary" in result.output

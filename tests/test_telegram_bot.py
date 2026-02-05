@@ -178,7 +178,7 @@ class TestHandleMessage:
 
         with patch("scripts.telegram_bot.Worker") as MockWorker:
             mock_instance = MockWorker.return_value
-            mock_instance.chat.return_value = "4"
+            mock_instance.chat.return_value = ("4", [])
 
             await bot_module.handle_message(update, context)
 

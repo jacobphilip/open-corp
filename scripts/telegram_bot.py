@@ -153,7 +153,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     user_text = update.message.text
     try:
-        response = await asyncio.to_thread(worker.chat, user_text, _router)
+        response, _ = await asyncio.to_thread(worker.chat, user_text, _router)
         await update.message.reply_text(response)
     except BudgetExceeded as e:
         await update.message.reply_text(f"Budget exceeded: {e}")

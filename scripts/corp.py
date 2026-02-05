@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """corp — CLI for managing your open-corp project."""
 
+import json
 import sys
 from pathlib import Path
 
 import click
+import yaml
 
 from framework.accountant import Accountant
 from framework.config import ProjectConfig
@@ -159,21 +161,22 @@ def chat(ctx, worker_name):
     click.echo(f"Chatting with {worker_name} ({title}, tier={worker.get_tier()})")
     click.echo("Type 'quit' or Ctrl+C to exit.\n")
 
+    history: list[dict] = []
+
     while True:
         try:
             user_input = input("You: ").strip()
         except (KeyboardInterrupt, EOFError):
-            click.echo("\nBye.")
+            click.echo()
             break
 
         if not user_input:
             continue
         if user_input.lower() in ("quit", "exit", "q"):
-            click.echo("Bye.")
             break
 
         try:
-            response = worker.chat(user_input, router)
+            response, history = worker.chat(user_input, router, history=history)
             click.echo(f"\n{worker_name}: {response}\n")
         except BudgetExceeded as e:
             click.echo(f"\nBudget exceeded: {e}\n", err=True)
@@ -181,6 +184,15 @@ def chat(ctx, worker_name):
             click.echo(f"\nModel unavailable: {e}\n", err=True)
         except Exception as e:
             click.echo(f"\nError: {e}\n", err=True)
+
+    # Summarize session on exit
+    if history:
+        try:
+            worker.summarize_session(history, router)
+            click.echo("Session summary saved.")
+        except Exception:
+            click.echo("Could not save session summary.")
+    click.echo("Bye.")
 
 
 @cli.command()
@@ -254,6 +266,197 @@ def knowledge(ctx, worker_name, search):
         for source in sorted(sources):
             source_entries = [e for e in entries if e.source == source]
             click.echo(f"  {source} — {len(source_entries)} chunks")
+
+
+@cli.command()
+@click.pass_context
+def init(ctx):
+    """Initialize a new open-corp project in the current directory."""
+    project_dir = ctx.obj["project_dir"] or Path.cwd()
+    charter_path = project_dir / "charter.yaml"
+
+    if charter_path.exists():
+        if not click.confirm("charter.yaml already exists. Overwrite?"):
+            click.echo("Aborted.")
+            sys.exit(1)
+
+    # Gather project info
+    name = click.prompt("Project name")
+    owner = click.prompt("Owner name")
+    mission = click.prompt("Mission statement")
+
+    while True:
+        budget_str = click.prompt("Daily budget (USD)", default="3.00")
+        try:
+            daily_budget = float(budget_str)
+            if daily_budget <= 0:
+                click.echo("Budget must be positive.")
+                continue
+            break
+        except ValueError:
+            click.echo("Enter a valid number.")
+
+    api_key = click.prompt("OpenRouter API key (sk-or-...)", default="", show_default=False)
+    if api_key and not api_key.startswith("sk-or-"):
+        click.echo("Warning: Key doesn't start with 'sk-or-'. Continuing anyway.")
+
+    # Generate charter.yaml
+    charter = {
+        "project": {
+            "name": name,
+            "owner": owner,
+            "mission": mission,
+        },
+        "budget": {
+            "daily_limit": daily_budget,
+            "currency": "USD",
+            "thresholds": {
+                "normal": 0.60,
+                "caution": 0.80,
+                "austerity": 0.95,
+                "critical": 1.00,
+            },
+        },
+        "models": {
+            "tiers": {
+                "cheap": {
+                    "models": ["deepseek/deepseek-chat", "mistralai/mistral-tiny"],
+                    "for": "Simple tasks",
+                },
+                "mid": {
+                    "models": ["anthropic/claude-sonnet-4-20250514"],
+                    "for": "Complex tasks",
+                },
+                "premium": {
+                    "models": ["anthropic/claude-opus-4-5-20251101"],
+                    "for": "Board-level decisions",
+                },
+            },
+        },
+        "git": {"auto_commit": False, "auto_push": False},
+        "worker_defaults": {
+            "starting_level": 1,
+            "max_context_tokens": 2000,
+            "model": "deepseek/deepseek-chat",
+            "honest_ai": True,
+        },
+    }
+
+    charter_path.write_text(yaml.dump(charter, default_flow_style=False, sort_keys=False))
+
+    # Write .env
+    env_path = project_dir / ".env"
+    env_lines = [f"OPENROUTER_API_KEY={api_key}"]
+    env_path.write_text("\n".join(env_lines) + "\n")
+
+    # Create directories
+    for dirname in ("workers", "templates", "data"):
+        (project_dir / dirname).mkdir(exist_ok=True)
+
+    click.echo(f"\nProject '{name}' initialized in {project_dir}")
+    click.echo("Created: charter.yaml, .env, workers/, templates/, data/")
+
+
+@cli.command()
+@click.argument("worker_name", required=False, default=None)
+@click.pass_context
+def inspect(ctx, worker_name):
+    """Inspect project overview or a specific worker."""
+    try:
+        config, accountant, _, hr = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    if worker_name is None:
+        # Project overview
+        report = accountant.daily_report()
+        click.echo(f"Project: {config.name}")
+        click.echo(f"Owner:   {config.owner}")
+        click.echo(f"Mission: {config.mission}")
+        click.echo(f"Budget:  ${report['total_spent']:.4f} / ${report['daily_limit']:.2f} ({report['status']})")
+        click.echo()
+
+        worker_list = hr.list_workers()
+        if not worker_list:
+            click.echo("Workers: none")
+        else:
+            click.echo("Workers:")
+            seniority = {1: "Intern", 2: "Junior", 3: "Mid", 4: "Senior", 5: "Principal"}
+            for w in worker_list:
+                title = seniority.get(w["level"], f"L{w['level']}")
+                # Count memory, knowledge, performance
+                wdir = config.project_dir / "workers" / w["name"]
+                mem_count = 0
+                kb_count = 0
+                perf_count = 0
+                mem_path = wdir / "memory.json"
+                if mem_path.exists():
+                    try:
+                        mem_count = len(json.loads(mem_path.read_text()))
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                kb_path = wdir / "knowledge_base" / "knowledge.json"
+                if kb_path.exists():
+                    try:
+                        kb_count = len(json.loads(kb_path.read_text()))
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                perf_path = wdir / "performance.json"
+                if perf_path.exists():
+                    try:
+                        perf_count = len(json.loads(perf_path.read_text()))
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                click.echo(
+                    f"  {w['name']} — {title} — {w['role']} "
+                    f"(memory: {mem_count}, knowledge: {kb_count}, tasks: {perf_count})"
+                )
+    else:
+        # Worker detail
+        try:
+            worker = Worker(worker_name, config.project_dir, config)
+        except WorkerNotFound:
+            click.echo(f"Worker '{worker_name}' not found.", err=True)
+            sys.exit(1)
+
+        # Profile (first 5 lines)
+        profile_lines = worker.profile.strip().split("\n")[:5]
+        click.echo("Profile:")
+        for line in profile_lines:
+            click.echo(f"  {line}")
+        click.echo()
+
+        # Skills
+        skills_list = worker.skills.get("skills", [])
+        if skills_list:
+            skills_text = ", ".join(
+                s if isinstance(s, str) else s.get("name", str(s))
+                for s in skills_list
+            )
+            click.echo(f"Skills: {skills_text}")
+
+        # Level/tier
+        seniority = {1: "Intern", 2: "Junior", 3: "Mid", 4: "Senior", 5: "Principal"}
+        title = seniority.get(worker.level, f"L{worker.level}")
+        click.echo(f"Level:  {title} (L{worker.level}, tier={worker.get_tier()})")
+
+        # Counts
+        click.echo(f"Memory: {len(worker.memory)} entries")
+        click.echo(f"Knowledge: {len(worker.knowledge.entries)} entries")
+
+        # Knowledge sources
+        if worker.knowledge.entries:
+            sources = sorted(set(e.source for e in worker.knowledge.entries))
+            click.echo(f"Sources: {', '.join(sources)}")
+
+        # Performance
+        click.echo(f"Tasks: {len(worker.performance)}")
+        if worker.performance:
+            ratings = [p["rating"] for p in worker.performance if p.get("rating") is not None]
+            if ratings:
+                avg = sum(ratings) / len(ratings)
+                click.echo(f"Avg rating: {avg:.1f}")
 
 
 if __name__ == "__main__":

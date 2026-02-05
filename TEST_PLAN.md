@@ -1,6 +1,6 @@
 # Test Plan — open-corp
 
-Version: **0.2.0** | Total tests: **117** | Status: **All passing**
+Version: **0.3.0** | Total tests: **145** | Status: **All passing**
 
 ---
 
@@ -95,7 +95,29 @@ Version: **0.2.0** | Total tests: **117** | Status: **All passing**
 
 ---
 
-## test_worker.py — 13 tests
+## test_exceptions.py — 3 tests (NEW in v0.3)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_config_error_with_suggestion | Suggestion text appears in str() output |
+| 2 | test_worker_not_found_has_default_suggestion | Default suggestion present |
+| 3 | test_exceptions_backward_compat | All exceptions work without explicit suggestion |
+
+---
+
+## test_templates.py — 5 tests (NEW in v0.3)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_all_templates_have_required_files | All template dirs have profile.md, skills.yaml, config.yaml |
+| 2 | test_template_config_valid_yaml | config.yaml parses, has "level" |
+| 3 | test_template_skills_valid_yaml | skills.yaml parses, has "role" and "skills" |
+| 4 | test_template_profile_nonempty | profile.md is non-empty |
+| 5 | test_hire_from_each_template | HR can hire from every template |
+
+---
+
+## test_worker.py — 21 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -106,12 +128,20 @@ Version: **0.2.0** | Total tests: **117** | Status: **All passing**
 | 5 | test_build_system_prompt_with_memory | Prompt includes recent memory entries |
 | 6 | test_update_memory | Memory appends and persists to disk |
 | 7 | test_record_performance | Performance records persist to disk |
-| 8 | test_chat | Chat calls router and updates memory |
+| 8 | test_chat | Chat calls router, returns tuple, updates memory |
 | 9 | test_build_system_prompt_with_knowledge | Knowledge entries appear in prompt |
 | 10 | test_build_system_prompt_knowledge_with_query | Search narrows knowledge with query |
 | 11 | test_build_system_prompt_no_knowledge | Without knowledge_base, prompt works (backward compat) |
 | 12 | test_knowledge_and_memory_budget_sharing | Both knowledge and memory fit within budget |
 | 13 | test_chat_passes_query_to_prompt | User message flows as query to build_system_prompt |
+| 14 | test_chat_returns_tuple | chat() returns (str, list) |
+| 15 | test_chat_with_history | History included in API messages |
+| 16 | test_chat_history_accumulates | Two calls → 4-entry history |
+| 17 | test_chat_without_history_backward_compat | history=None works |
+| 18 | test_summarize_session | Summary returned from API call |
+| 19 | test_summarize_session_empty_history | Empty → returns "" |
+| 20 | test_summarize_session_records_memory | Memory entry type "session_summary" |
+| 21 | test_summarize_session_api_call | Router called with conversation |
 
 ---
 
@@ -143,7 +173,7 @@ Version: **0.2.0** | Total tests: **117** | Status: **All passing**
 
 ---
 
-## test_cli.py — 19 tests
+## test_cli.py — 31 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -159,13 +189,25 @@ Version: **0.2.0** | Total tests: **117** | Status: **All passing**
 | 10 | test_hire_duplicate_worker | exit 1 when worker already exists |
 | 11 | test_chat_worker_not_found | exit 1, "not found" |
 | 12 | test_chat_quit_command | input="quit", exit 0, "Bye" |
-| 13 | test_chat_sends_message | Mocked router, response in output |
+| 13 | test_chat_sends_message | Mocked router, response + summary in output |
 | 14 | test_train_no_source | exit 1, "Specify a training source" |
 | 15 | test_train_document | --document calls train_from_document |
 | 16 | test_train_url | --url calls train_from_url |
 | 17 | test_knowledge_command | Shows knowledge entry summary |
 | 18 | test_knowledge_search | --search filters knowledge entries |
 | 19 | test_knowledge_empty | "no knowledge base entries" when empty |
+| 20 | test_init_creates_charter_and_env | All inputs → files created with correct values |
+| 21 | test_init_creates_directories | workers/, templates/, data/ exist |
+| 22 | test_init_warns_on_existing_charter | input "n" → abort |
+| 23 | test_init_overwrites_on_confirm | input "y" → overwrite |
+| 24 | test_init_validates_budget | Negative then valid → prompt repeats |
+| 25 | test_inspect_project_overview | No args → project + budget + workers |
+| 26 | test_inspect_project_no_workers | "none" shown |
+| 27 | test_inspect_worker_detail | Profile + skills + counts |
+| 28 | test_inspect_worker_not_found | exit 1 |
+| 29 | test_chat_multi_turn_history | Two messages, 3 API calls (2 chat + 1 summary) |
+| 30 | test_chat_summarizes_on_quit | "Session summary saved" in output |
+| 31 | test_chat_summary_failure_graceful | API error → fallback message |
 
 ---
 
@@ -187,11 +229,11 @@ Version: **0.2.0** | Total tests: **117** | Status: **All passing**
 
 ---
 
-## Coverage Gaps (known, acceptable for v0.2)
+## Coverage Gaps (known, acceptable for v0.3)
 
 - **YouTube training pipeline:** No automated tests for actual download/transcribe (requires yt-dlp + whisper)
 - **PDF training:** Uses mocked pypdf in tests (real PDF parsing tested manually)
 
 ---
 
-Total tests: **117** | All passing
+Total tests: **145** | All passing

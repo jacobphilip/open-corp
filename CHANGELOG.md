@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [0.3.0] — 2026-02-05
+
+### Added
+- **framework/exceptions.py** — `suggestion` field on all 5 exception classes with default suggestions for WorkerNotFound, BudgetExceeded, ModelUnavailable
+- **framework/config.py** — Contextual suggestions passed to ConfigError raises (missing charter, missing fields)
+- **framework/worker.py** — Multi-turn `chat()` with conversation history, `summarize_session()` for auto-summarizing chat sessions to worker memory
+- **scripts/corp.py** — `init` command (interactive project wizard), `inspect` command (project/worker detail view), multi-turn chat with session summaries
+- **templates/job-hunter/** — Career assistant template (resume, cover letters, interview prep)
+- **templates/data-analyst/** — Data analysis template (statistics, reports, hypothesis testing)
+- **templates/content-writer/** — Content writing template (blog, social, SEO, email)
+- **tests/test_exceptions.py** — 3 tests for suggestion field and backward compatibility
+- **tests/test_templates.py** — 5 tests for template file validation and hiring
+- **tests/test_worker.py** — +8 multi-turn chat and session summary tests
+- **tests/test_cli.py** — +12 tests for init, inspect, and updated chat commands
+
+### Changed
+- **Breaking:** `Worker.chat()` returns `tuple[str, list[dict]]` instead of `str` (response text + conversation history)
+- **scripts/telegram_bot.py** — Updated to unpack `chat()` tuple return
+- **scripts/corp.py** — Chat command now maintains conversation history across messages and summarizes on exit
+
+---
+
 ## [0.2.0] — 2026-02-05
 
 ### Added

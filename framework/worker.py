@@ -164,12 +164,77 @@ class Worker:
 
         return "\n".join(parts)
 
-    def chat(self, message: str, router: Router) -> str:
-        """Send a message through the router and return the response."""
+    def chat(
+        self, message: str, router: Router, history: list[dict] | None = None,
+    ) -> tuple[str, list[dict]]:
+        """Send a message through the router and return (response, updated_history).
+
+        Args:
+            message: User message text.
+            router: Router instance for API calls.
+            history: Previous conversation messages (user/assistant pairs).
+                     Pass None for single-turn (backward compat).
+
+        Returns:
+            Tuple of (response_text, updated_history) where history includes
+            the new user+assistant message pair.
+        """
+        if history is None:
+            history = []
+
         system_prompt = self.build_system_prompt(query=message)
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": message})
+
+        result = router.chat(
+            messages=messages,
+            tier=self.get_tier(),
+            worker_name=self.name,
+        )
+
+        response_text = result["content"]
+
+        # Update history with new exchange
+        updated_history = list(history)
+        updated_history.append({"role": "user", "content": message})
+        updated_history.append({"role": "assistant", "content": response_text})
+
+        # Record interaction in memory
+        self.update_memory("interaction", f"User: {message[:200]}")
+        self.update_memory("interaction", f"Response: {response_text[:200]}")
+
+        return response_text, updated_history
+
+    def summarize_session(self, history: list[dict], router: Router) -> str:
+        """Summarize a chat session and store in worker memory.
+
+        Args:
+            history: Conversation history (user/assistant pairs).
+            router: Router instance for the summary API call.
+
+        Returns:
+            Summary text, or empty string if history is empty.
+        """
+        if not history:
+            return ""
+
+        # Format conversation for summarization
+        lines = []
+        for msg in history:
+            role = "User" if msg["role"] == "user" else self.name
+            lines.append(f"{role}: {msg['content']}")
+        conversation = "\n".join(lines)
+
+        prompt = (
+            "Summarize this conversation in 2-3 sentences. "
+            "Focus on what was discussed, decisions made, and any action items.\n\n"
+            f"{conversation}"
+        )
+
         messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message},
+            {"role": "system", "content": "You are a concise summarizer."},
+            {"role": "user", "content": prompt},
         ]
 
         result = router.chat(
@@ -178,11 +243,9 @@ class Worker:
             worker_name=self.name,
         )
 
-        # Record interaction in memory
-        self.update_memory("interaction", f"User: {message[:200]}")
-        self.update_memory("interaction", f"Response: {result['content'][:200]}")
-
-        return result["content"]
+        summary = result["content"]
+        self.update_memory("session_summary", summary)
+        return summary
 
     def update_memory(self, entry_type: str, content: str) -> None:
         """Append an entry to the worker's memory."""
