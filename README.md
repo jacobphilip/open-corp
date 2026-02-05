@@ -1,12 +1,12 @@
 # open-corp
 
-**An AI workforce that works while you don't. For $20–70/month.**
+**An AI workforce that works while you don't. Starting at ~$1–3/day.**
 
-open-corp is an open source framework for building AI-powered operations. You talk to your project through Claude Code (or any LLM via OpenRouter). The LLM understands your project, delegates to specialist workers you've trained, and operates under strict budget controls.
+open-corp is an open source framework for building AI-powered operations. You manage specialist workers through a CLI (or Telegram bot), each with their own personality, memory, and skills — all powered by cheap AI models via OpenRouter.
 
 You give tasks. Workers execute. You review results.
 
-The project folder *is* your operation. Claude Code *is* your interface. No extra abstractions.
+The project folder *is* your operation. The CLI *is* your interface. No extra abstractions.
 
 ---
 
@@ -66,16 +66,16 @@ The framework doesn't care what domain you use it for. You define the mission. T
 ```
 ┌─────────────────────────────────────────────────────┐
 │                    YOU (Owner)                       │
-│           Terminal (Claude Code) or Telegram         │
+│              CLI (corp) or Telegram                  │
 └──────────────────────┬──────────────────────────────┘
                        │
                        ▼
 ┌─────────────────────────────────────────────────────┐
-│              Your LLM (via CLAUDE.md)                │
-│      Claude / Kimi 2.5 / DeepSeek / any model        │
+│              open-corp framework                     │
+│      Routes to any model via OpenRouter              │
 │                                                      │
-│   • Understands your project structure               │
-│   • Delegates to Workers                             │
+│   • Manages workers and their memory                 │
+│   • Routes tasks to the right AI model               │
 │   • Consults Board when needed                       │
 │   • All spending goes through Accountant first       │
 └──────────────────────┬──────────────────────────────┘
@@ -95,7 +95,7 @@ The framework doesn't care what domain you use it for. You define the mission. T
 
 **The project folder is your operation.** The charter, workers, memory, and budget all live there.
 
-**Claude Code (or any LLM) is your interface.** It reads CLAUDE.md, understands the project, and acts on your behalf. You can swap models via OpenRouter — the framework doesn't care which LLM you use.
+**The CLI is your interface.** `corp init` sets up a project, `corp hire` adds workers, `corp chat` talks to them. Everything runs from the terminal.
 
 **The Accountant is infrastructure, not an agent.** It wraps every API call. Before tokens are spent, it checks the budget. Over limit? The call doesn't happen. This runs regardless of what the LLM decides — it's a hard guardrail that cannot be bypassed.
 
@@ -111,22 +111,21 @@ The framework doesn't care what domain you use it for. You define the mission. T
 
 | What | Cost | Why |
 |------|------|-----|
-| [Claude Pro](https://claude.ai/pro) | $20/month ($17/mo annual) | Your main interface — Claude Code is included with Pro |
-| [OpenRouter](https://openrouter.ai) | Pay-per-use (~$1–3/day typical) | Powers your workers with cheap AI models |
-| [GitHub](https://github.com) | Free | Stores your project files and history |
+| [OpenRouter](https://openrouter.ai) | Pay-per-use (~$1–3/day typical) | Powers your workers with cheap AI models (DeepSeek, Mistral, etc.) |
+| Python 3.10+ | Free | Runs the framework |
 
-**Minimum total: ~$20–30/month** depending on how much your workers think.
+**That's it. Minimum cost: ~$1–3/day** depending on how much your workers think.
 
-### Optional (adds Board of Advisors)
+### Optional
 
 | What | Cost | Why |
 |------|------|-----|
-| [Grok Super](https://x.ai) | $30/month | Advisor — real-time data, current prices, breaking news |
-| [ChatGPT Plus](https://chat.openai.com) | $20/month | Advisor — stress-testing ideas, finding holes in plans |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Requires Claude Pro ($20/mo) | Natural language interface — talk to your project instead of typing commands |
+| [Grok Super](https://x.ai) | $30/month | Board advisor — real-time data, current prices, breaking news |
+| [ChatGPT Plus](https://chat.openai.com) | $20/month | Board advisor — stress-testing ideas, finding holes in plans |
+| [GitHub](https://github.com) | Free | Version control for your project files |
 
-**Full setup: ~$70/month** (plus OpenRouter usage)
-
-The advisors are optional. Your operation works fine without them. But having a second and third opinion makes better decisions — same as in real business.
+Claude Code is a power-user convenience, not a requirement. The CLI (`corp`) does everything Claude Code does — just with explicit commands instead of natural language. If you have Claude Pro, Claude Code reads the project's CLAUDE.md and lets you manage your operation conversationally.
 
 ### Cost Safety
 
@@ -141,64 +140,62 @@ Set your OpenRouter daily limit to $5 and you literally cannot overspend. The sy
 
 ---
 
-## Quick Start (15 minutes)
+## Quick Start (10 minutes)
 
-### Step 1: Get Your Accounts Ready
+### Step 1: Get an OpenRouter API Key
 
-1. **Claude Pro** ($20/month) — Sign up at [claude.ai](https://claude.ai), upgrade to Pro. Then install Claude Code — open your terminal and run the install command from [Anthropic's docs](https://docs.anthropic.com/en/docs/claude-code). One-line install, no extra software needed.
-2. **OpenRouter** (pay-per-use) — Sign up at [openrouter.ai](https://openrouter.ai). Add $5 credit to start. Go to "Keys" → "Create Key" → copy it (starts with `sk-or-v1-...`). Then go to Settings → Limits → set a daily limit.
-3. **GitHub** (free) — Sign up at [github.com](https://github.com). Create a private repository for your operation.
+Sign up at [openrouter.ai](https://openrouter.ai). Add $5 credit to start. Go to "Keys" → "Create Key" → copy it (starts with `sk-or-v1-...`). Then go to Settings → Limits → set a daily limit.
 
-### Step 2: Clone and Set Up
-
-Open your terminal and run:
+### Step 2: Clone and Install
 
 ```bash
-# Download the framework
 git clone https://github.com/jacobphilip/open-corp.git
 cd open-corp
-
-# Copy the example configuration
-cp .env.example .env
-
-# Open .env and paste your OpenRouter API key
-nano .env
-```
-
-In the `.env` file, replace `your-key-here` with your actual OpenRouter API key:
-
-```
-OPENROUTER_API_KEY=sk-or-v1-your-actual-key-here
-```
-
-Save and close (Ctrl+X, then Y, then Enter).
-
-### Step 3: Install the Framework
-
-```bash
-# Create a virtual environment and install
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 ```
 
+### Step 3: Initialize Your Project
+
+```bash
+# Interactive wizard — creates charter.yaml, .env, and directories
+corp init
+```
+
+The wizard will prompt for your project name, mission, budget, and API key.
+
+Or set up manually:
+
+```bash
+cp .env.example .env
+nano .env  # paste your OPENROUTER_API_KEY
+```
+
 ### Step 4: Hire a Worker and Start
 
 ```bash
-# Check project status
-python scripts/corp.py status
+# See available templates
+ls templates/
 
-# Hire a researcher from template
-python scripts/corp.py hire researcher my-researcher
+# Hire a researcher
+corp hire researcher my-researcher
 
 # See your workers
-python scripts/corp.py workers
+corp workers
 
-# Chat with your worker (requires OPENROUTER_API_KEY in .env)
-python scripts/corp.py chat my-researcher
+# Chat with your worker
+corp chat my-researcher
+
+# Inspect your project
+corp inspect
 ```
 
 That's it. You're the Owner. Start giving orders.
+
+### Optional: Use Claude Code as Your Interface
+
+If you have [Claude Pro](https://claude.ai/pro), you can install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and manage your operation with natural language instead of CLI commands. Claude Code reads the project's CLAUDE.md and understands the full project structure — workers, budget, memory, everything. Just open Claude Code in the project directory and talk to it.
 
 ---
 
@@ -376,7 +373,7 @@ See [ROADMAP.md](ROADMAP.md) for full details.
 
 **vs. Zapier / Make.com:** Those chain simple if-then rules together. open-corp workers can reason, handle ambiguity, and adapt. They think, not just trigger.
 
-**vs. AutoGPT / CrewAI / MetaGPT:** Those are developer frameworks written for engineers, often locked to specific models. open-corp is designed for business owners through Claude Code's natural language interface, works with any LLM via OpenRouter, and has budget safety built in from day one.
+**vs. AutoGPT / CrewAI / MetaGPT:** Those are developer frameworks written for engineers, often locked to specific models. open-corp has a simple CLI designed for anyone comfortable with a terminal, works with any LLM via OpenRouter, and has budget safety built in from day one.
 
 **vs. being locked to one AI provider:** open-corp doesn't care if you use Claude, Kimi 2.5, DeepSeek, or next month's hot new model. Configure OpenRouter, point it at whatever works, and the framework adapts. Your workers and project structure stay the same.
 
