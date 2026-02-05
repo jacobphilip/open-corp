@@ -69,3 +69,14 @@ class TestProjectConfig:
         assert config.worker_defaults.starting_level == 1
         assert config.board_enabled is False
         assert len(config.model_tiers) == 0
+
+    def test_max_history_messages_from_charter(self, tmp_path):
+        """max_history_messages is parsed from charter.yaml."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+            "worker_defaults": {"max_history_messages": 20},
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.worker_defaults.max_history_messages == 20

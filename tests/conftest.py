@@ -9,6 +9,7 @@ import yaml
 
 from framework.accountant import Accountant
 from framework.config import ProjectConfig
+from framework.events import EventLog
 from framework.hr import HR
 from framework.router import Router
 
@@ -88,6 +89,12 @@ def router(config, accountant):
 def hr(config, tmp_project):
     """Create an HR instance."""
     return HR(config, tmp_project)
+
+
+@pytest.fixture
+def event_log(tmp_project):
+    """Create an EventLog in the temp project."""
+    return EventLog(tmp_project / "data" / "events.json")
 
 
 @pytest.fixture

@@ -10,10 +10,16 @@ import yaml
 
 from framework.accountant import Accountant
 from framework.config import ProjectConfig
-from framework.exceptions import BudgetExceeded, ConfigError, ModelUnavailable, TrainingError, WorkerNotFound
+from framework.events import EventLog
+from framework.exceptions import (
+    BudgetExceeded, ConfigError, ModelUnavailable, SchedulerError,
+    TrainingError, WorkerNotFound, WorkflowError,
+)
 from framework.hr import HR
 from framework.router import Router
+from framework.scheduler import Scheduler, ScheduledTask
 from framework.worker import Worker
+from framework.workflow import Workflow, WorkflowEngine
 
 
 def _load_project(project_dir: Path | None = None) -> tuple[ProjectConfig, Accountant, Router, HR]:
@@ -457,6 +463,253 @@ def inspect(ctx, worker_name):
             if ratings:
                 avg = sum(ratings) / len(ratings)
                 click.echo(f"Avg rating: {avg:.1f}")
+
+
+def _load_project_full(project_dir=None):
+    """Load all components including event log."""
+    config, accountant, router, hr = _load_project(project_dir)
+    event_log = EventLog(config.project_dir / "data" / "events.json")
+    return config, accountant, router, hr, event_log
+
+
+# --- Schedule commands ---
+
+@cli.group()
+def schedule():
+    """Manage scheduled tasks."""
+    pass
+
+
+@schedule.command("add")
+@click.argument("worker_name")
+@click.argument("message")
+@click.option("--cron", default=None, help="Cron expression (e.g. '*/30 * * * *')")
+@click.option("--interval", default=None, type=int, help="Interval in seconds")
+@click.option("--once", default=None, help="ISO datetime for one-time execution")
+@click.option("--description", default="", help="Task description")
+@click.pass_context
+def schedule_add(ctx, worker_name, message, cron, interval, once, description):
+    """Add a scheduled task for a worker."""
+    try:
+        config, accountant, router, _, event_log = _load_project_full(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    scheduler = Scheduler(config, accountant, router, event_log)
+
+    if cron:
+        schedule_type, schedule_value = "cron", cron
+    elif interval:
+        schedule_type, schedule_value = "interval", str(interval)
+    elif once:
+        schedule_type, schedule_value = "once", once
+    else:
+        click.echo("Specify --cron, --interval, or --once", err=True)
+        sys.exit(1)
+
+    try:
+        task = scheduler.add_task(ScheduledTask(
+            worker_name=worker_name,
+            message=message,
+            schedule_type=schedule_type,
+            schedule_value=schedule_value,
+            description=description,
+        ))
+        click.echo(f"Scheduled task {task.id}: {worker_name} ({schedule_type}={schedule_value})")
+    except SchedulerError as e:
+        click.echo(f"Scheduler error: {e}", err=True)
+        sys.exit(1)
+
+
+@schedule.command("list")
+@click.pass_context
+def schedule_list(ctx):
+    """List all scheduled tasks."""
+    try:
+        config, accountant, router, _, event_log = _load_project_full(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    scheduler = Scheduler(config, accountant, router, event_log)
+    tasks = scheduler.list_tasks()
+    if not tasks:
+        click.echo("No scheduled tasks.")
+        return
+
+    for t in tasks:
+        status = "enabled" if t.get("enabled", True) else "disabled"
+        click.echo(f"  {t['id']} — {t['worker_name']} — {t['schedule_type']}={t['schedule_value']} ({status})")
+
+
+@schedule.command("remove")
+@click.argument("task_id")
+@click.pass_context
+def schedule_remove(ctx, task_id):
+    """Remove a scheduled task."""
+    try:
+        config, accountant, router, _, event_log = _load_project_full(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    scheduler = Scheduler(config, accountant, router, event_log)
+    try:
+        scheduler.remove_task(task_id)
+        click.echo(f"Removed task {task_id}")
+    except SchedulerError as e:
+        click.echo(f"Scheduler error: {e}", err=True)
+        sys.exit(1)
+
+
+# --- Workflow commands ---
+
+@cli.group()
+def workflow():
+    """Manage and run DAG workflows."""
+    pass
+
+
+@workflow.command("run")
+@click.argument("workflow_file", type=click.Path(exists=True, path_type=Path))
+@click.pass_context
+def workflow_run(ctx, workflow_file):
+    """Run a workflow from a YAML file."""
+    try:
+        config, accountant, router, _, event_log = _load_project_full(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    try:
+        wf = Workflow.load(workflow_file)
+    except WorkflowError as e:
+        click.echo(f"Workflow error: {e}", err=True)
+        sys.exit(1)
+
+    engine = WorkflowEngine(config, accountant, router, event_log)
+    click.echo(f"Running workflow '{wf.name}' ({len(wf.nodes)} nodes)...")
+
+    try:
+        run = engine.run(wf)
+    except (WorkflowError, BudgetExceeded, ModelUnavailable) as e:
+        click.echo(f"Workflow failed: {e}", err=True)
+        sys.exit(1)
+
+    for node_id, result in run.node_results.items():
+        status = result["status"]
+        click.echo(f"  {node_id}: {status}")
+
+    click.echo(f"\nWorkflow {run.status} (run {run.id})")
+
+
+@workflow.command("list")
+@click.option("--name", default=None, help="Filter by workflow name")
+@click.pass_context
+def workflow_list(ctx, name):
+    """List workflow runs."""
+    try:
+        config, accountant, router, _, event_log = _load_project_full(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    engine = WorkflowEngine(config, accountant, router, event_log)
+    runs = engine.list_runs(workflow_name=name)
+    if not runs:
+        click.echo("No workflow runs.")
+        return
+
+    for r in runs:
+        click.echo(f"  {r['id']} — {r['workflow_name']} — {r['status']} ({r.get('started_at', '')})")
+
+
+@workflow.command("status")
+@click.argument("run_id")
+@click.pass_context
+def workflow_status(ctx, run_id):
+    """Show status of a workflow run."""
+    try:
+        config, accountant, router, _, event_log = _load_project_full(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    engine = WorkflowEngine(config, accountant, router, event_log)
+    run = engine.get_run(run_id)
+    if not run:
+        click.echo(f"Run '{run_id}' not found.", err=True)
+        sys.exit(1)
+
+    click.echo(f"Workflow: {run['workflow_name']}")
+    click.echo(f"Status:   {run['status']}")
+    click.echo(f"Started:  {run.get('started_at', '')}")
+    click.echo(f"Completed: {run.get('completed_at', '')}")
+    if run.get("node_results"):
+        click.echo("\nNodes:")
+        for node_id, result in run["node_results"].items():
+            click.echo(f"  {node_id}: {result['status']}")
+
+
+# --- Daemon command ---
+
+@cli.command()
+@click.pass_context
+def daemon(ctx):
+    """Start the scheduler daemon (foreground, Ctrl+C to stop)."""
+    try:
+        config, accountant, router, _, event_log = _load_project_full(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    scheduler = Scheduler(config, accountant, router, event_log)
+    tasks = scheduler.list_tasks()
+    enabled = [t for t in tasks if t.get("enabled", True)]
+
+    if not enabled:
+        click.echo("No enabled scheduled tasks. Add tasks with: corp schedule add")
+        return
+
+    click.echo(f"Starting daemon with {len(enabled)} task(s)...")
+    scheduler.start()
+
+    try:
+        import time
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        click.echo("\nShutting down...")
+        scheduler.stop()
+        click.echo("Daemon stopped.")
+
+
+# --- Events command ---
+
+@cli.command()
+@click.option("--type", "event_type", default=None, help="Filter by event type")
+@click.option("--limit", default=20, help="Number of events to show")
+@click.pass_context
+def events(ctx, event_type, limit):
+    """Show recent events."""
+    try:
+        config, accountant, router, _, event_log = _load_project_full(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    results = event_log.query(event_type=event_type, limit=limit)
+    if not results:
+        click.echo("No events.")
+        return
+
+    for e in results:
+        click.echo(f"  [{e['timestamp']}] {e['type']} — {e['source']}")
+        if e.get("data"):
+            for k, v in e["data"].items():
+                val = str(v)[:100]
+                click.echo(f"    {k}: {val}")
 
 
 if __name__ == "__main__":

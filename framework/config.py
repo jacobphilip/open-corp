@@ -34,6 +34,7 @@ class WorkerDefaults:
     max_context_tokens: int = 2000
     model: str = "deepseek/deepseek-chat"
     honest_ai: bool = True
+    max_history_messages: int = 50
 
 
 @dataclass
@@ -147,6 +148,7 @@ class ProjectConfig:
             max_context_tokens=wd_raw.get("max_context_tokens", 2000),
             model=wd_raw.get("model", "deepseek/deepseek-chat"),
             honest_ai=wd_raw.get("honest_ai", True),
+            max_history_messages=wd_raw.get("max_history_messages", 50),
         )
 
         # Board

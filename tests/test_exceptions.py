@@ -4,8 +4,10 @@ from framework.exceptions import (
     BudgetExceeded,
     ConfigError,
     ModelUnavailable,
+    SchedulerError,
     TrainingError,
     WorkerNotFound,
+    WorkflowError,
 )
 
 
@@ -39,3 +41,24 @@ class TestExceptionSuggestions:
         e4 = TrainingError("file.txt", "bad format")
         assert "bad format" in str(e4)
         assert "Try:" not in str(e4)  # no default for TrainingError
+
+    def test_scheduler_error(self):
+        """SchedulerError includes task_id and reason."""
+        err = SchedulerError("abc123", "worker missing", suggestion="Check workers/")
+        assert "abc123" in str(err)
+        assert "worker missing" in str(err)
+        assert "Try: Check workers/" in str(err)
+        assert err.task_id == "abc123"
+        assert err.reason == "worker missing"
+
+    def test_workflow_error(self):
+        """WorkflowError includes workflow name, optional node, and suggestion."""
+        err = WorkflowError("my-pipeline", "cycle detected")
+        assert "my-pipeline" in str(err)
+        assert "cycle detected" in str(err)
+        assert "node" not in str(err)
+
+        err2 = WorkflowError("pipe", "failed", node="step-2", suggestion="Fix step-2")
+        assert "at node 'step-2'" in str(err2)
+        assert "Try: Fix step-2" in str(err2)
+        assert err2.node == "step-2"

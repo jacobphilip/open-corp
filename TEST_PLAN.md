@@ -1,6 +1,6 @@
 # Test Plan — open-corp
 
-Version: **0.3.0** | Total tests: **145** | Status: **All passing**
+Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 
 ---
 
@@ -9,12 +9,12 @@ Version: **0.3.0** | Total tests: **145** | Status: **All passing**
 - **Framework:** pytest 9.x
 - **HTTP mocking:** respx 0.22 (for httpx)
 - **Async:** pytest-asyncio 1.3 (strict mode)
-- **Fixtures:** `tests/conftest.py` — shared `tmp_project`, `config`, `accountant`, `router`, `hr`, `create_template`, `create_worker` fixtures
+- **Fixtures:** `tests/conftest.py` — shared `tmp_project`, `config`, `accountant`, `router`, `hr`, `event_log`, `create_template`, `create_worker` fixtures
 - **Run:** `.venv/bin/pytest tests/ -v`
 
 ---
 
-## test_config.py — 7 tests
+## test_config.py — 8 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -25,6 +25,7 @@ Version: **0.3.0** | Total tests: **145** | Status: **All passing**
 | 5 | test_missing_required_project_field | Raises ConfigError for missing required field (mission) |
 | 6 | test_bad_yaml | Raises ConfigError for unparseable YAML |
 | 7 | test_defaults_when_optional_sections_missing | Optional sections get sensible defaults |
+| 8 | test_max_history_messages_from_charter | max_history_messages parsed from charter.yaml |
 
 ---
 
@@ -95,17 +96,19 @@ Version: **0.3.0** | Total tests: **145** | Status: **All passing**
 
 ---
 
-## test_exceptions.py — 3 tests (NEW in v0.3)
+## test_exceptions.py — 5 tests
 
 | # | Test | Validates |
 |---|------|-----------|
 | 1 | test_config_error_with_suggestion | Suggestion text appears in str() output |
 | 2 | test_worker_not_found_has_default_suggestion | Default suggestion present |
 | 3 | test_exceptions_backward_compat | All exceptions work without explicit suggestion |
+| 4 | test_scheduler_error | SchedulerError fields and string output |
+| 5 | test_workflow_error | WorkflowError with/without node and suggestion |
 
 ---
 
-## test_templates.py — 5 tests (NEW in v0.3)
+## test_templates.py — 5 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -117,7 +120,7 @@ Version: **0.3.0** | Total tests: **145** | Status: **All passing**
 
 ---
 
-## test_worker.py — 21 tests
+## test_worker.py — 24 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -134,14 +137,17 @@ Version: **0.3.0** | Total tests: **145** | Status: **All passing**
 | 11 | test_build_system_prompt_no_knowledge | Without knowledge_base, prompt works (backward compat) |
 | 12 | test_knowledge_and_memory_budget_sharing | Both knowledge and memory fit within budget |
 | 13 | test_chat_passes_query_to_prompt | User message flows as query to build_system_prompt |
-| 14 | test_chat_returns_tuple | chat() returns (str, list) |
-| 15 | test_chat_with_history | History included in API messages |
-| 16 | test_chat_history_accumulates | Two calls → 4-entry history |
-| 17 | test_chat_without_history_backward_compat | history=None works |
-| 18 | test_summarize_session | Summary returned from API call |
-| 19 | test_summarize_session_empty_history | Empty → returns "" |
-| 20 | test_summarize_session_records_memory | Memory entry type "session_summary" |
-| 21 | test_summarize_session_api_call | Router called with conversation |
+| 14 | test_chat_history_truncation | History exceeding max truncated to most recent |
+| 15 | test_chat_history_truncation_default | Default 50 works without truncation |
+| 16 | test_chat_truncation_returned_history | Returned history reflects truncation + new exchange |
+| 17 | test_chat_returns_tuple | chat() returns (str, list) |
+| 18 | test_chat_with_history | History included in API messages |
+| 19 | test_chat_history_accumulates | Two calls → 4-entry history |
+| 20 | test_chat_without_history_backward_compat | history=None works |
+| 21 | test_summarize_session | Summary returned from API call |
+| 22 | test_summarize_session_empty_history | Empty → returns "" |
+| 23 | test_summarize_session_records_memory | Memory entry type "session_summary" |
+| 24 | test_summarize_session_api_call | Router called with conversation |
 
 ---
 
@@ -211,6 +217,61 @@ Version: **0.3.0** | Total tests: **145** | Status: **All passing**
 
 ---
 
+## test_events.py — 10 tests (NEW in v0.4)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_event_auto_timestamp | Empty timestamp auto-filled |
+| 2 | test_event_explicit_timestamp | Explicit timestamp preserved |
+| 3 | test_emit_persists | Event found in TinyDB after emit |
+| 4 | test_emit_dispatches_handler | Handler called with correct Event |
+| 5 | test_handler_exception_swallowed | Bad handler doesn't prevent persistence |
+| 6 | test_wildcard_handler | "*" handler receives all event types |
+| 7 | test_off_removes_handler | Removed handler not called |
+| 8 | test_query_by_type | Filter by event type |
+| 9 | test_query_by_source | Filter by source |
+| 10 | test_query_limit | Limit caps results, newest first |
+
+---
+
+## test_scheduler.py — 10 tests (NEW in v0.4)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_add_task | Task persisted to TinyDB with ID |
+| 2 | test_add_task_invalid_type | Invalid schedule_type → SchedulerError |
+| 3 | test_add_task_worker_not_found | Missing worker → SchedulerError |
+| 4 | test_remove_task | Task removed from TinyDB |
+| 5 | test_remove_task_not_found | Missing task_id → SchedulerError |
+| 6 | test_list_tasks | Returns all tasks |
+| 7 | test_get_task | Returns single task by ID |
+| 8 | test_execute_task | Mocked router, response returned + events emitted |
+| 9 | test_execute_task_failure | Chat error → task.failed event, returns None |
+| 10 | test_execute_task_not_found | Missing task → returns None |
+
+---
+
+## test_workflow.py — 14 tests (NEW in v0.4)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_load_workflow_yaml | Valid YAML → Workflow dataclass |
+| 2 | test_load_workflow_missing_file | Missing file → WorkflowError |
+| 3 | test_load_workflow_no_nodes | Empty nodes → WorkflowError |
+| 4 | test_load_workflow_missing_worker | Node without worker → WorkflowError |
+| 5 | test_topological_sort_linear | A→B→C sorts correctly |
+| 6 | test_topological_sort_diamond | Fan-out/fan-in (A→B,C→D) |
+| 7 | test_topological_sort_cycle | Cycle → WorkflowError |
+| 8 | test_substitute_outputs | `{a.output}` replaced correctly |
+| 9 | test_check_condition_success | All deps completed → True |
+| 10 | test_check_condition_contains | Keyword in output → True |
+| 11 | test_run_simple_workflow | Two nodes, mocked router, both complete |
+| 12 | test_run_with_dependency | Node B uses {A.output}, verify substitution |
+| 13 | test_run_node_failure_skips_downstream | A fails → B skipped |
+| 14 | test_run_persists_result | WorkflowRun stored in TinyDB |
+
+---
+
 ## test_telegram_bot.py — 11 tests
 
 | # | Test | Validates |
@@ -229,11 +290,13 @@ Version: **0.3.0** | Total tests: **145** | Status: **All passing**
 
 ---
 
-## Coverage Gaps (known, acceptable for v0.3)
+## Coverage Gaps (known, acceptable for v0.4)
 
 - **YouTube training pipeline:** No automated tests for actual download/transcribe (requires yt-dlp + whisper)
 - **PDF training:** Uses mocked pypdf in tests (real PDF parsing tested manually)
+- **APScheduler integration:** Tests validate CRUD and `_execute_task()` directly; `start()`/`stop()` with live APScheduler not tested (would require timing-sensitive assertions)
+- **Daemon CLI:** Not tested (blocks the terminal; manual verification required)
 
 ---
 
-Total tests: **145** | All passing
+Total tests: **185** | All passing

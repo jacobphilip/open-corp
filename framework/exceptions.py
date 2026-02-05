@@ -60,3 +60,33 @@ class TrainingError(Exception):
         if suggestion:
             msg += f"\n  Try: {suggestion}"
         super().__init__(msg)
+
+
+class SchedulerError(Exception):
+    """Raised when a scheduled task operation fails."""
+
+    def __init__(self, task_id: str, reason: str, suggestion: str = ""):
+        self.task_id = task_id
+        self.reason = reason
+        self.suggestion = suggestion
+        msg = f"Scheduler error for task '{task_id}': {reason}"
+        if suggestion:
+            msg += f"\n  Try: {suggestion}"
+        super().__init__(msg)
+
+
+class WorkflowError(Exception):
+    """Raised when a workflow operation fails."""
+
+    def __init__(self, workflow_name: str, reason: str, node: str = "", suggestion: str = ""):
+        self.workflow_name = workflow_name
+        self.reason = reason
+        self.node = node
+        self.suggestion = suggestion
+        msg = f"Workflow '{workflow_name}' error"
+        if node:
+            msg += f" at node '{node}'"
+        msg += f": {reason}"
+        if suggestion:
+            msg += f"\n  Try: {suggestion}"
+        super().__init__(msg)

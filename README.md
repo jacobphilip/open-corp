@@ -283,16 +283,19 @@ open-corp/
 ├── requirements.txt             # Python dependencies
 │
 ├── framework/                   # Core framework code
-│   ├── exceptions.py            # Shared exceptions (BudgetExceeded, ModelUnavailable, TrainingError, etc.)
+│   ├── exceptions.py            # Shared exceptions (BudgetExceeded, ModelUnavailable, SchedulerError, WorkflowError, etc.)
 │   ├── config.py                # Project configuration loader (charter.yaml + .env)
 │   ├── accountant.py            # Budget guardrail (runs before every API call)
 │   ├── router.py                # Model selection, OpenRouter integration, tier fallback
 │   ├── knowledge.py             # Knowledge base: chunking, keyword search, validation
 │   ├── worker.py                # Worker class (profile, memory, knowledge, skills, chat)
-│   └── hr.py                    # Hiring, training (document/web/YouTube), firing, promoting
+│   ├── hr.py                    # Hiring, training (document/web/YouTube), firing, promoting
+│   ├── events.py                # Event system: TinyDB-backed log with in-memory pub/sub
+│   ├── scheduler.py             # Scheduled task execution (APScheduler daemon)
+│   └── workflow.py              # DAG workflow engine (YAML-defined, topological execution)
 │
 ├── scripts/
-│   ├── corp.py                  # CLI — init, status, budget, workers, hire, chat, train, inspect, knowledge
+│   ├── corp.py                  # CLI — init, status, budget, workers, hire, chat, train, inspect, knowledge, schedule, workflow, daemon, events
 │   └── telegram_bot.py          # Telegram bot interface
 │
 ├── templates/                   # Starter worker templates
@@ -302,18 +305,21 @@ open-corp/
 │   ├── data-analyst/            # Data analysis specialist
 │   └── content-writer/          # Content writing specialist
 │
-├── tests/                       # 145 tests (pytest + respx)
+├── tests/                       # 185 tests (pytest + respx)
 │   ├── conftest.py              # Shared fixtures
-│   ├── test_config.py           # 7 tests
+│   ├── test_config.py           # 8 tests
 │   ├── test_accountant.py       # 9 tests
 │   ├── test_router.py           # 14 tests
-│   ├── test_exceptions.py       # 3 tests
+│   ├── test_exceptions.py       # 5 tests
 │   ├── test_templates.py        # 5 tests
-│   ├── test_worker.py           # 21 tests
+│   ├── test_worker.py           # 24 tests
 │   ├── test_hr.py               # 21 tests
 │   ├── test_cli.py              # 31 tests
 │   ├── test_knowledge.py        # 23 tests
-│   └── test_telegram_bot.py     # 11 tests
+│   ├── test_telegram_bot.py     # 11 tests
+│   ├── test_events.py           # 10 tests
+│   ├── test_scheduler.py        # 10 tests
+│   └── test_workflow.py         # 14 tests
 │
 ├── projects/                    # YOUR projects go here
 │   └── .gitkeep
@@ -358,8 +364,8 @@ These principles are encoded in the `CLAUDE.md` file that your LLM reads automat
 |---------|------------|
 | **v0.1** | Core framework, CLI, Telegram bot, 2 worker templates, 71 tests |
 | **v0.2** | Worker training from documents, web pages, YouTube playlists; knowledge search; 117 tests |
-| **v0.3** (current) | `corp init` wizard, multi-turn chat, `corp inspect`, 3 new templates, improved errors; 145 tests |
-| **v0.4** | Automated scheduling, worker coordination, chat history truncation |
+| **v0.3** | `corp init` wizard, multi-turn chat, `corp inspect`, 3 new templates, improved errors; 145 tests |
+| **v0.4** (current) | Event system, scheduled tasks (APScheduler), DAG workflow engine, chat truncation; 185 tests |
 | **v0.5** | Board of Advisors wiring, broker integrations |
 | **v1.0** | Production-ready, self-optimizing operations, community marketplace |
 

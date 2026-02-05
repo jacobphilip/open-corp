@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [0.4.0] — 2026-02-05
+
+### Added
+- **framework/config.py** — `max_history_messages` field on WorkerDefaults (default 50) for chat history truncation
+- **framework/worker.py** — Automatic chat history truncation in `chat()` based on `max_history_messages`
+- **framework/exceptions.py** — `SchedulerError` and `WorkflowError` exception classes with suggestion support
+- **framework/events.py** — Event system with TinyDB-backed persistent log and in-memory pub/sub (`EventLog`, `Event`)
+- **framework/scheduler.py** — Scheduled task execution with APScheduler (`Scheduler`, `ScheduledTask`) supporting cron, interval, and one-time tasks
+- **framework/workflow.py** — DAG workflow engine with YAML definitions, topological sort, template substitution, and condition checking (`WorkflowEngine`, `Workflow`, `WorkflowNode`)
+- **scripts/corp.py** — New CLI commands: `schedule add/list/remove`, `workflow run/list/status`, `daemon`, `events`
+- **tests/test_events.py** — 10 tests for event system
+- **tests/test_scheduler.py** — 10 tests for scheduler
+- **tests/test_workflow.py** — 14 tests for workflow engine
+- **tests/test_config.py** — +1 test for max_history_messages parsing
+- **tests/test_exceptions.py** — +2 tests for SchedulerError and WorkflowError
+- **tests/test_worker.py** — +3 tests for chat history truncation
+- **pyproject.toml** — `apscheduler>=3.10,<4.0` added to dependencies
+
+### Changed
+- Worker chat history is automatically truncated to `max_history_messages` (configurable in charter.yaml)
+- Total test count: 145 → 185
+
+---
+
 ## [0.3.0] — 2026-02-05
 
 ### Added

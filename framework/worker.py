@@ -182,6 +182,10 @@ class Worker:
         if history is None:
             history = []
 
+        max_msgs = self.config.worker_defaults.max_history_messages
+        if len(history) > max_msgs:
+            history = history[-max_msgs:]
+
         system_prompt = self.build_system_prompt(query=message)
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history)

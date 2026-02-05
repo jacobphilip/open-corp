@@ -1,6 +1,6 @@
 # Roadmap — open-corp
 
-Current version: **0.3.0**
+Current version: **0.4.0**
 
 ---
 
@@ -50,14 +50,17 @@ Status: **Complete**
 
 ---
 
-## v0.4 — Automation
+## v0.4.0 — Automation
 
-Status: **Planned**
+Status: **Complete**
 
-- [ ] Scheduled task execution (cron/systemd timers)
-- [ ] Worker coordination (one worker triggers another)
-- [ ] Event-driven workflows
-- [ ] Chat history truncation for long conversations
+- [x] Chat history truncation with configurable `max_history_messages` (default 50)
+- [x] Event system — TinyDB-backed persistent log with in-memory pub/sub
+- [x] Scheduled task execution — APScheduler daemon with cron, interval, one-time tasks
+- [x] DAG workflow engine — YAML-defined workflows with topological sort, template substitution, conditions
+- [x] CLI: `schedule add/list/remove`, `workflow run/list/status`, `daemon`, `events`
+- [x] SchedulerError and WorkflowError exception classes
+- [x] Tests — 185 tests, all passing
 
 ---
 
@@ -68,6 +71,9 @@ Status: **Planned**
 - [ ] Board of Advisors wiring (Grok, ChatGPT, Claude direct API)
 - [ ] Live broker integration (Interactive Brokers) for trading example
 - [ ] Webhook endpoints for external triggers
+- [ ] Parallel workflow fan-out (threaded node execution)
+- [ ] Thread-safe TinyDB access for scheduler
+- [ ] Daemon systemd/nohup support
 
 ---
 

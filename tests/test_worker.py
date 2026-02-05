@@ -192,6 +192,91 @@ class TestWorker:
         assert response == "Here's what I know about cooking."
 
 
+class TestChatHistoryTruncation:
+    """Tests for chat history truncation."""
+
+    def _mock_router_response(self, content="OK"):
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": content}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        })
+
+    def test_chat_history_truncation(self, tmp_project, config):
+        """History exceeding max_history_messages is truncated to most recent."""
+        config.worker_defaults.max_history_messages = 4
+        _create_worker_files(tmp_project / "workers" / "trunc1")
+        worker = Worker("trunc1", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        # Build a 10-message history
+        history = [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": f"msg{i}"}
+            for i in range(10)
+        ]
+
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_router_response("reply"),
+            )
+            response, new_history = worker.chat("new msg", router, history=history)
+
+        # Only last 4 history messages + new user msg sent (plus system)
+        request_body = json.loads(route.calls[0].request.content)
+        messages = request_body["messages"]
+        # system + 4 truncated history + 1 new user = 6
+        assert len(messages) == 6
+        assert messages[1]["content"] == "msg6"  # first of last 4
+
+    def test_chat_history_truncation_default(self, tmp_project, config):
+        """Default max_history_messages=50 works without truncation for small histories."""
+        assert config.worker_defaults.max_history_messages == 50
+        _create_worker_files(tmp_project / "workers" / "trunc2")
+        worker = Worker("trunc2", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        history = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+        ]
+
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_router_response("ok"),
+            )
+            worker.chat("test", router, history=history)
+
+        request_body = json.loads(route.calls[0].request.content)
+        # system + 2 history + 1 new = 4 (no truncation)
+        assert len(request_body["messages"]) == 4
+
+    def test_chat_truncation_returned_history(self, tmp_project, config):
+        """Returned history reflects truncation plus new exchange."""
+        config.worker_defaults.max_history_messages = 4
+        _create_worker_files(tmp_project / "workers" / "trunc3")
+        worker = Worker("trunc3", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        history = [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": f"msg{i}"}
+            for i in range(10)
+        ]
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_router_response("reply"),
+            )
+            _, new_history = worker.chat("new", router, history=history)
+
+        # Truncated to 4 + 2 new (user + assistant) = 6
+        assert len(new_history) == 6
+        assert new_history[0]["content"] == "msg6"
+        assert new_history[-2]["content"] == "new"
+        assert new_history[-1]["content"] == "reply"
+
+
 class TestMultiTurnChat:
     """Tests for multi-turn chat and session summarization."""
 
