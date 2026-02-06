@@ -38,6 +38,14 @@ class WorkerDefaults:
 
 
 @dataclass
+class PromotionRules:
+    min_tasks: int = 5
+    promote_threshold: float = 4.0
+    demote_threshold: float = 2.0
+    review_window: int = 20
+
+
+@dataclass
 class GitConfig:
     auto_commit: bool = True
     auto_push: bool = True
@@ -55,6 +63,8 @@ class ProjectConfig:
     model_tiers: dict[str, ModelTier] = field(default_factory=dict)
     git: GitConfig = field(default_factory=GitConfig)
     worker_defaults: WorkerDefaults = field(default_factory=WorkerDefaults)
+    promotion_rules: PromotionRules = field(default_factory=PromotionRules)
+    marketplace_url: str = ""
     board_enabled: bool = False
 
     @staticmethod
@@ -151,6 +161,18 @@ class ProjectConfig:
             max_history_messages=wd_raw.get("max_history_messages", 50),
         )
 
+        # Promotion rules
+        pr_raw = raw.get("promotion_rules", {})
+        promotion_rules = PromotionRules(
+            min_tasks=pr_raw.get("min_tasks", 5),
+            promote_threshold=float(pr_raw.get("promote_threshold", 4.0)),
+            demote_threshold=float(pr_raw.get("demote_threshold", 2.0)),
+            review_window=pr_raw.get("review_window", 20),
+        )
+
+        # Marketplace
+        marketplace_url = raw.get("marketplace", {}).get("registry_url", "")
+
         # Board
         board_enabled = raw.get("board", {}).get("enabled", False)
 
@@ -163,5 +185,7 @@ class ProjectConfig:
             model_tiers=model_tiers,
             git=git,
             worker_defaults=worker_defaults,
+            promotion_rules=promotion_rules,
+            marketplace_url=marketplace_url,
             board_enabled=board_enabled,
         )

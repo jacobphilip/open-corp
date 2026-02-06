@@ -1,6 +1,6 @@
 # Roadmap — open-corp
 
-Current version: **0.5.0**
+Current version: **1.0.0**
 
 ---
 
@@ -80,11 +80,14 @@ Status: **Complete**
 
 ---
 
-## v1.0 — Production Ready
+## v1.0.0 — Production Ready
 
-Status: **Planned**
+Status: **Complete**
 
-- [ ] Multi-operation management
-- [ ] Community worker marketplace
-- [ ] Self-optimizing operations (workers learn from performance data)
-- [ ] Comprehensive documentation and tutorials
+- [x] Multi-operation management — `~/.open-corp/` registry, `corp ops create/list/switch/remove/active`
+- [x] Template marketplace — remote YAML registry, `corp marketplace list/search/info/install`
+- [x] Self-optimizing operations — performance analytics, auto-promote/demote, smart task routing
+- [x] Smart task routing — skill match + performance + seniority scoring, `worker: auto` in workflows
+- [x] Performance review CLI — `corp review [worker] [--auto]`, `corp delegate <message>`
+- [x] Full MkDocs documentation site — 14 pages with Material theme
+- [x] Tests — 321 tests, all passing

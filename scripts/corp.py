@@ -13,10 +13,12 @@ from framework.accountant import Accountant
 from framework.config import ProjectConfig
 from framework.events import EventLog
 from framework.exceptions import (
-    BrokerError, BudgetExceeded, ConfigError, ModelUnavailable, SchedulerError,
-    TrainingError, WebhookError, WorkerNotFound, WorkflowError,
+    BrokerError, BudgetExceeded, ConfigError, MarketplaceError, ModelUnavailable,
+    RegistryError, SchedulerError, TrainingError, WebhookError, WorkerNotFound,
+    WorkflowError,
 )
 from framework.hr import HR
+from framework.registry import OperationRegistry
 from framework.router import Router
 from framework.scheduler import Scheduler, ScheduledTask
 from framework.worker import Worker
@@ -24,9 +26,18 @@ from framework.workflow import Workflow, WorkflowEngine
 
 
 def _load_project(project_dir: Path | None = None) -> tuple[ProjectConfig, Accountant, Router, HR]:
-    """Load all project components from the given (or current) directory."""
+    """Load all project components from the given (or current) directory.
+
+    Lookup chain: --project-dir > active operation from registry > cwd.
+    """
     if project_dir is None:
-        project_dir = Path.cwd()
+        # Check registry for active operation
+        registry = OperationRegistry()
+        active_path = registry.get_active_path()
+        if active_path is not None:
+            project_dir = active_path
+        else:
+            project_dir = Path.cwd()
     config = ProjectConfig.load(project_dir)
     accountant = Accountant(config)
     router = Router(config, accountant)
@@ -360,8 +371,91 @@ def init(ctx):
     for dirname in ("workers", "templates", "data"):
         (project_dir / dirname).mkdir(exist_ok=True)
 
+    # Auto-register in operation registry
+    try:
+        registry = OperationRegistry()
+        registry.register(name, project_dir)
+    except Exception:
+        pass  # Non-critical — registry is optional
+
     click.echo(f"\nProject '{name}' initialized in {project_dir}")
     click.echo("Created: charter.yaml, .env, workers/, templates/, data/")
+
+
+# --- Operations management commands ---
+
+@cli.group()
+def ops():
+    """Manage multiple open-corp operations."""
+    pass
+
+
+@ops.command("create")
+@click.argument("name")
+@click.option("--dir", "directory", type=click.Path(path_type=Path), default=None,
+              help="Use an existing directory instead of creating one")
+@click.pass_context
+def ops_create(ctx, name, directory):
+    """Register a new operation."""
+    registry = OperationRegistry()
+    if directory is None:
+        directory = Path.cwd() / name
+        directory.mkdir(parents=True, exist_ok=True)
+    directory = Path(directory).resolve()
+    registry.register(name, directory)
+    click.echo(f"Registered operation '{name}' at {directory}")
+
+
+@ops.command("list")
+def ops_list():
+    """List all registered operations."""
+    registry = OperationRegistry()
+    operations = registry.list_operations()
+    active = registry.get_active()
+    if not operations:
+        click.echo("No operations registered. Use: corp ops create <name>")
+        return
+    for op_name, op_path in sorted(operations.items()):
+        marker = " *" if op_name == active else ""
+        click.echo(f"  {op_name}: {op_path}{marker}")
+
+
+@ops.command("switch")
+@click.argument("name")
+def ops_switch(name):
+    """Switch to a different operation."""
+    registry = OperationRegistry()
+    try:
+        registry.set_active(name)
+        click.echo(f"Switched to '{name}'")
+    except RegistryError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@ops.command("remove")
+@click.argument("name")
+def ops_remove(name):
+    """Unregister an operation (does not delete files)."""
+    registry = OperationRegistry()
+    try:
+        registry.unregister(name)
+        click.echo(f"Removed '{name}' from registry")
+    except RegistryError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@ops.command("active")
+def ops_active():
+    """Show the currently active operation."""
+    registry = OperationRegistry()
+    active = registry.get_active()
+    if active:
+        path = registry.get_active_path()
+        click.echo(f"{active}: {path}")
+    else:
+        click.echo("No active operation. Use: corp ops switch <name>")
 
 
 @cli.command()
@@ -471,6 +565,202 @@ def _load_project_full(project_dir=None):
     config, accountant, router, hr = _load_project(project_dir)
     event_log = EventLog(config.project_dir / "data" / "events.json")
     return config, accountant, router, hr, event_log
+
+
+# --- Review + Delegate commands ---
+
+@cli.command()
+@click.argument("worker_name", required=False, default=None)
+@click.option("--auto", "auto_review", is_flag=True, help="Auto-promote/demote based on rules")
+@click.pass_context
+def review(ctx, worker_name, auto_review):
+    """Review worker performance. No args = team scorecard."""
+    try:
+        config, _, _, hr = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    if auto_review:
+        actions = hr.auto_review()
+        if not actions:
+            click.echo("No promotions or demotions needed.")
+        else:
+            for a in actions:
+                click.echo(f"  {a['worker']}: {a['action']} to L{a['to_level']} (avg {a['avg_rating']})")
+        return
+
+    if worker_name:
+        try:
+            worker = Worker(worker_name, config.project_dir, config)
+        except WorkerNotFound:
+            click.echo(f"Worker '{worker_name}' not found.", err=True)
+            sys.exit(1)
+        summary = worker.performance_summary()
+        click.echo(f"{worker_name}:")
+        click.echo(f"  Tasks:        {summary['task_count']}")
+        click.echo(f"  Avg rating:   {summary['avg_rating']}")
+        click.echo(f"  Success rate: {summary['success_rate']:.0%}")
+        click.echo(f"  Trend:        {summary['trend']:+.2f}")
+    else:
+        results = hr.team_review()
+        if not results:
+            click.echo("No workers to review.")
+            return
+        seniority = {1: "Intern", 2: "Junior", 3: "Mid", 4: "Senior", 5: "Principal"}
+        for r in results:
+            title = seniority.get(r["level"], f"L{r['level']}")
+            click.echo(f"  {r['name']} — {title} — avg {r['avg_rating']} ({r['task_count']} tasks)")
+
+
+@cli.command()
+@click.argument("message")
+@click.pass_context
+def delegate(ctx, message):
+    """Auto-select a worker and send a message."""
+    try:
+        config, accountant, router, hr = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.task_router import TaskRouter
+    task_router = TaskRouter(config, hr)
+    selected = task_router.select_worker(message)
+    if selected is None:
+        click.echo("No workers available. Hire workers first.", err=True)
+        sys.exit(1)
+
+    try:
+        worker = Worker(selected, config.project_dir, config)
+    except WorkerNotFound:
+        click.echo(f"Selected worker '{selected}' not found.", err=True)
+        sys.exit(1)
+
+    click.echo(f"Delegating to {selected}...")
+    try:
+        response, _ = worker.chat(message, router)
+        click.echo(f"\n{selected}: {response}")
+    except (BudgetExceeded, ModelUnavailable) as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+# --- Marketplace commands ---
+
+@cli.group()
+def marketplace():
+    """Browse and install templates from the marketplace."""
+    pass
+
+
+@marketplace.command("list")
+@click.pass_context
+def marketplace_list(ctx):
+    """List available templates."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.marketplace import Marketplace
+    mp = Marketplace(config.marketplace_url, config.project_dir / "templates")
+
+    try:
+        templates = mp.list_templates()
+    except MarketplaceError as e:
+        click.echo(f"Marketplace error: {e}", err=True)
+        sys.exit(1)
+
+    if not templates:
+        click.echo("No templates available.")
+        return
+
+    for tpl in templates:
+        tags = ", ".join(tpl.get("tags", []))
+        click.echo(f"  {tpl['name']} — {tpl.get('description', '')} [{tags}]")
+
+
+@marketplace.command("search")
+@click.argument("query")
+@click.pass_context
+def marketplace_search(ctx, query):
+    """Search templates by name, description, or tags."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.marketplace import Marketplace
+    mp = Marketplace(config.marketplace_url, config.project_dir / "templates")
+
+    try:
+        results = mp.search(query)
+    except MarketplaceError as e:
+        click.echo(f"Marketplace error: {e}", err=True)
+        sys.exit(1)
+
+    if not results:
+        click.echo(f"No templates matching '{query}'.")
+        return
+
+    for tpl in results:
+        click.echo(f"  {tpl['name']} — {tpl.get('description', '')}")
+
+
+@marketplace.command("info")
+@click.argument("name")
+@click.pass_context
+def marketplace_info(ctx, name):
+    """Show details for a template."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.marketplace import Marketplace
+    mp = Marketplace(config.marketplace_url, config.project_dir / "templates")
+
+    try:
+        info = mp.info(name)
+    except MarketplaceError as e:
+        click.echo(f"Marketplace error: {e}", err=True)
+        sys.exit(1)
+
+    if info is None:
+        click.echo(f"Template '{name}' not found.")
+        sys.exit(1)
+
+    click.echo(f"Name:        {info.get('name', '')}")
+    click.echo(f"Description: {info.get('description', '')}")
+    click.echo(f"Author:      {info.get('author', '')}")
+    click.echo(f"Tags:        {', '.join(info.get('tags', []))}")
+    click.echo(f"URL:         {info.get('url', '')}")
+
+
+@marketplace.command("install")
+@click.argument("name")
+@click.pass_context
+def marketplace_install(ctx, name):
+    """Install a template from the marketplace."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.marketplace import Marketplace
+    mp = Marketplace(config.marketplace_url, config.project_dir / "templates")
+
+    try:
+        path = mp.install(name)
+        click.echo(f"Installed '{name}' to {path}")
+    except MarketplaceError as e:
+        click.echo(f"Marketplace error: {e}", err=True)
+        sys.exit(1)
 
 
 # --- Schedule commands ---

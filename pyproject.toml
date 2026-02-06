@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "open-corp"
-version = "0.5.0"
+version = "1.0.0"
 description = "AI-powered operations with specialist workers, budget controls, and persistent memory"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,6 +32,11 @@ training = [
     "html2text>=2024.2",
 ]
 broker = ["yfinance>=0.2"]
+docs = [
+    "mkdocs>=1.5",
+    "mkdocs-material>=9.0",
+    "mkdocstrings[python]>=0.24",
+]
 
 [project.scripts]
 corp = "scripts.corp:cli"

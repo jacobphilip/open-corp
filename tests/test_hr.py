@@ -113,6 +113,102 @@ class TestHR:
         assert new_level == 5
 
 
+class TestDemoteAndReview:
+    def test_demote_success(self, tmp_project, config):
+        """Level decremented."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("demotee", role="underperformer")
+        hr.promote("demotee")  # now level 2
+        new_level = hr.demote("demotee")
+        assert new_level == 1
+
+    def test_demote_minimum_level(self, tmp_project, config):
+        """Level stays at 1."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("bottom", role="intern")
+        new_level = hr.demote("bottom")
+        assert new_level == 1
+
+    def test_demote_worker_not_found(self, tmp_project, config):
+        """WorkerNotFound raised."""
+        hr = HR(config, tmp_project)
+        with pytest.raises(WorkerNotFound, match="ghost"):
+            hr.demote("ghost")
+
+    def test_team_review_ranked(self, tmp_project, config):
+        """Workers sorted by avg_rating desc."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("star", role="analyst")
+        hr.hire_from_scratch("average", role="analyst")
+
+        from framework.worker import Worker
+        star = Worker("star", tmp_project, config)
+        star.record_performance("t1", "completed", rating=5)
+        star.record_performance("t2", "completed", rating=5)
+
+        avg = Worker("average", tmp_project, config)
+        avg.record_performance("t1", "completed", rating=3)
+
+        review = hr.team_review()
+        assert len(review) == 2
+        assert review[0]["name"] == "star"
+        assert review[0]["avg_rating"] == 5.0
+
+    def test_team_review_empty(self, tmp_project, config):
+        """Empty list when no workers."""
+        hr = HR(config, tmp_project)
+        assert hr.team_review() == []
+
+    def test_auto_review_promotes(self, tmp_project, config):
+        """High performer promoted."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("highperf", role="analyst")
+
+        from framework.worker import Worker
+        from framework.config import PromotionRules
+        w = Worker("highperf", tmp_project, config)
+        for i in range(6):
+            w.record_performance(f"t{i}", "completed", rating=5)
+
+        rules = PromotionRules(min_tasks=5, promote_threshold=4.0, demote_threshold=2.0)
+        actions = hr.auto_review(rules=rules)
+        assert len(actions) == 1
+        assert actions[0]["action"] == "promoted"
+        assert actions[0]["to_level"] == 2
+
+    def test_auto_review_demotes(self, tmp_project, config):
+        """Low performer demoted."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("lowperf", role="analyst")
+        hr.promote("lowperf")  # level 2
+
+        from framework.worker import Worker
+        from framework.config import PromotionRules
+        w = Worker("lowperf", tmp_project, config)
+        for i in range(6):
+            w.record_performance(f"t{i}", "completed", rating=1)
+
+        rules = PromotionRules(min_tasks=5, promote_threshold=4.0, demote_threshold=2.0)
+        actions = hr.auto_review(rules=rules)
+        assert len(actions) == 1
+        assert actions[0]["action"] == "demoted"
+        assert actions[0]["to_level"] == 1
+
+    def test_auto_review_skips_few_tasks(self, tmp_project, config):
+        """Worker with too few tasks skipped."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("newbie", role="analyst")
+
+        from framework.worker import Worker
+        from framework.config import PromotionRules
+        w = Worker("newbie", tmp_project, config)
+        w.record_performance("t1", "completed", rating=5)
+
+        rules = PromotionRules(min_tasks=5, promote_threshold=4.0, demote_threshold=2.0)
+        actions = hr.auto_review(rules=rules)
+        assert len(actions) == 0
+
+
 class TestTrainFromDocument:
     def test_train_from_text_file(self, tmp_project, config):
         """Trains from a .txt file, creates knowledge entries."""

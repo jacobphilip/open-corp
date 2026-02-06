@@ -10,6 +10,7 @@ import yaml
 from click.testing import CliRunner
 
 from framework.exceptions import TrainingError
+from framework.registry import OperationRegistry
 from framework.router import OPENROUTER_API_URL
 from scripts.corp import cli
 
@@ -400,6 +401,205 @@ class TestCLIWebhook:
             result = runner.invoke(cli, ["--project-dir", str(tmp_project), "webhook", "start"])
         assert result.exit_code == 1
         assert "WEBHOOK_API_KEY" in result.output
+
+
+class TestCLIMarketplace:
+    REGISTRY_URL = "https://example.com/registry.yaml"
+    SAMPLE_REGISTRY = {
+        "templates": [
+            {
+                "name": "researcher",
+                "description": "Research specialist",
+                "author": "open-corp",
+                "tags": ["research", "analysis"],
+                "url": "https://example.com/templates/researcher",
+            },
+        ],
+    }
+
+    def _setup_charter_with_marketplace(self, tmp_project):
+        """Add marketplace config to charter.yaml."""
+        charter_path = tmp_project / "charter.yaml"
+        charter = yaml.safe_load(charter_path.read_text())
+        charter["marketplace"] = {"registry_url": self.REGISTRY_URL}
+        charter_path.write_text(yaml.dump(charter))
+
+    def test_marketplace_list(self, runner, tmp_project):
+        """Lists templates from registry."""
+        self._setup_charter_with_marketplace(tmp_project)
+        with respx.mock:
+            respx.get(self.REGISTRY_URL).mock(
+                return_value=httpx.Response(200, text=yaml.dump(self.SAMPLE_REGISTRY))
+            )
+            result = runner.invoke(cli, ["--project-dir", str(tmp_project), "marketplace", "list"])
+        assert result.exit_code == 0
+        assert "researcher" in result.output
+
+    def test_marketplace_search(self, runner, tmp_project):
+        """Searches templates."""
+        self._setup_charter_with_marketplace(tmp_project)
+        with respx.mock:
+            respx.get(self.REGISTRY_URL).mock(
+                return_value=httpx.Response(200, text=yaml.dump(self.SAMPLE_REGISTRY))
+            )
+            result = runner.invoke(cli, ["--project-dir", str(tmp_project), "marketplace", "search", "research"])
+        assert result.exit_code == 0
+        assert "researcher" in result.output
+
+    def test_marketplace_info(self, runner, tmp_project):
+        """Shows template details."""
+        self._setup_charter_with_marketplace(tmp_project)
+        with respx.mock:
+            respx.get(self.REGISTRY_URL).mock(
+                return_value=httpx.Response(200, text=yaml.dump(self.SAMPLE_REGISTRY))
+            )
+            result = runner.invoke(cli, ["--project-dir", str(tmp_project), "marketplace", "info", "researcher"])
+        assert result.exit_code == 0
+        assert "Research specialist" in result.output
+
+    def test_marketplace_install(self, runner, tmp_project):
+        """Installs template files."""
+        self._setup_charter_with_marketplace(tmp_project)
+        base = "https://example.com/templates/researcher"
+        with respx.mock:
+            respx.get(self.REGISTRY_URL).mock(
+                return_value=httpx.Response(200, text=yaml.dump(self.SAMPLE_REGISTRY))
+            )
+            respx.get(f"{base}/profile.md").mock(
+                return_value=httpx.Response(200, text="# Researcher")
+            )
+            respx.get(f"{base}/skills.yaml").mock(
+                return_value=httpx.Response(200, text=yaml.dump({"role": "researcher"}))
+            )
+            respx.get(f"{base}/config.yaml").mock(
+                return_value=httpx.Response(200, text=yaml.dump({"level": 1}))
+            )
+            result = runner.invoke(cli, ["--project-dir", str(tmp_project), "marketplace", "install", "researcher"])
+        assert result.exit_code == 0
+        assert "Installed" in result.output
+        assert (tmp_project / "templates" / "researcher" / "profile.md").exists()
+
+
+class TestCLIReviewDelegate:
+    def test_review_team(self, runner, tmp_project, create_worker):
+        """Team review shows workers."""
+        create_worker("alice", level=2, role="analyst")
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "review"])
+        assert result.exit_code == 0
+        assert "alice" in result.output
+
+    def test_review_single_worker(self, runner, tmp_project, create_worker):
+        """Single worker review shows summary."""
+        create_worker("bob", level=1, role="writer")
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "review", "bob"])
+        assert result.exit_code == 0
+        assert "Tasks:" in result.output
+        assert "Avg rating:" in result.output
+
+    def test_review_auto(self, runner, tmp_project, create_worker):
+        """--auto flag runs auto_review."""
+        create_worker("worker1", level=1, role="analyst")
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "review", "--auto"])
+        assert result.exit_code == 0
+        # With no performance data, should say no actions needed
+        assert "No promotions" in result.output
+
+    def test_delegate(self, runner, tmp_project, create_worker):
+        """Delegate auto-selects worker and chats."""
+        create_worker("analyst1", level=1, role="analyst")
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                return_value=httpx.Response(200, json={
+                    "choices": [{"message": {"content": "Analysis complete."}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                })
+            )
+            result = runner.invoke(
+                cli, ["--project-dir", str(tmp_project), "delegate", "analyze this data"]
+            )
+        assert result.exit_code == 0
+        assert "Delegating to analyst1" in result.output
+        assert "Analysis complete" in result.output
+
+
+class TestCLIOps:
+    def test_ops_list_empty(self, runner, tmp_path):
+        """No operations registered."""
+        with patch("scripts.corp.OperationRegistry") as MockReg:
+            mock_reg = MockReg.return_value
+            mock_reg.list_operations.return_value = {}
+            mock_reg.get_active.return_value = None
+            result = runner.invoke(cli, ["ops", "list"])
+        assert result.exit_code == 0
+        assert "No operations registered" in result.output
+
+    def test_ops_create_and_list(self, runner, tmp_path):
+        """Create shows in list."""
+        reg = OperationRegistry(registry_dir=tmp_path / ".reg")
+        with patch("scripts.corp.OperationRegistry", return_value=reg):
+            result = runner.invoke(cli, ["ops", "create", "myproj", "--dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "Registered" in result.output
+
+        with patch("scripts.corp.OperationRegistry", return_value=reg):
+            result = runner.invoke(cli, ["ops", "list"])
+        assert result.exit_code == 0
+        assert "myproj" in result.output
+
+    def test_ops_switch(self, runner, tmp_path):
+        """Sets active operation."""
+        reg = OperationRegistry(registry_dir=tmp_path / ".reg")
+        reg.register("proj1", tmp_path / "proj1")
+        with patch("scripts.corp.OperationRegistry", return_value=reg):
+            result = runner.invoke(cli, ["ops", "switch", "proj1"])
+        assert result.exit_code == 0
+        assert "Switched" in result.output
+
+    def test_ops_active(self, runner, tmp_path):
+        """Shows current active operation."""
+        reg = OperationRegistry(registry_dir=tmp_path / ".reg")
+        reg.register("proj1", tmp_path / "proj1")
+        reg.set_active("proj1")
+        with patch("scripts.corp.OperationRegistry", return_value=reg):
+            result = runner.invoke(cli, ["ops", "active"])
+        assert result.exit_code == 0
+        assert "proj1" in result.output
+
+    def test_ops_remove(self, runner, tmp_path):
+        """Unregisters operation."""
+        reg = OperationRegistry(registry_dir=tmp_path / ".reg")
+        reg.register("proj1", tmp_path / "proj1")
+        with patch("scripts.corp.OperationRegistry", return_value=reg):
+            result = runner.invoke(cli, ["ops", "remove", "proj1"])
+        assert result.exit_code == 0
+        assert "Removed" in result.output
+
+    def test_ops_switch_unknown(self, runner, tmp_path):
+        """Error for unknown name."""
+        reg = OperationRegistry(registry_dir=tmp_path / ".reg")
+        with patch("scripts.corp.OperationRegistry", return_value=reg):
+            result = runner.invoke(cli, ["ops", "switch", "ghost"])
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+    def test_ops_remove_unknown(self, runner, tmp_path):
+        """Error for unknown name."""
+        reg = OperationRegistry(registry_dir=tmp_path / ".reg")
+        with patch("scripts.corp.OperationRegistry", return_value=reg):
+            result = runner.invoke(cli, ["ops", "remove", "ghost"])
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+    def test_init_auto_registers(self, runner, tmp_path):
+        """corp init adds to registry."""
+        reg = OperationRegistry(registry_dir=tmp_path / ".reg")
+        user_input = "My Project\nAlice\nBuild stuff\n3.00\n\n"
+        with patch("scripts.corp.OperationRegistry", return_value=reg):
+            result = runner.invoke(
+                cli, ["--project-dir", str(tmp_path), "init"], input=user_input,
+            )
+        assert result.exit_code == 0
+        assert "My Project" in reg.list_operations()
 
 
 class TestCLIBroker:

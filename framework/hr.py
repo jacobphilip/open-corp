@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from framework.config import ProjectConfig
+from framework.config import ProjectConfig, PromotionRules
 from framework.exceptions import TrainingError, WorkerNotFound
 from framework.knowledge import KnowledgeBase, KnowledgeEntry, chunk_text, validate_knowledge
 from framework.worker import Worker
@@ -124,6 +124,84 @@ class HR:
                 f"Firing '{worker_name}' requires confirm=True. This deletes all worker data."
             )
         shutil.rmtree(worker_dir)
+
+    def demote(self, worker_name: str) -> int:
+        """Decrement a worker's seniority level. Returns new level (min 1)."""
+        worker_dir = self.workers_dir / worker_name
+        if not worker_dir.exists():
+            raise WorkerNotFound(worker_name)
+
+        config_path = worker_dir / "config.yaml"
+        config: dict = {}
+        if config_path.exists():
+            config = yaml.safe_load(config_path.read_text()) or {}
+
+        current = config.get("level", 1)
+        new_level = max(current - 1, 1)
+        config["level"] = new_level
+        config_path.write_text(yaml.dump(config, default_flow_style=False))
+        return new_level
+
+    def team_review(self) -> list[dict]:
+        """Aggregate all workers' performance, sorted by avg_rating desc."""
+        results = []
+        for info in self.list_workers():
+            try:
+                worker = Worker(info["name"], self.project_dir, self.config)
+                summary = worker.performance_summary()
+                results.append({
+                    "name": info["name"],
+                    "level": info["level"],
+                    "role": info["role"],
+                    **summary,
+                })
+            except Exception:
+                continue
+        results.sort(key=lambda r: r.get("avg_rating", 0), reverse=True)
+        return results
+
+    def auto_review(self, rules: PromotionRules | None = None) -> list[dict]:
+        """Auto-promote/demote workers based on performance rules.
+
+        Returns list of actions taken: [{worker, action, to_level, avg_rating}].
+        """
+        if rules is None:
+            rules = self.config.promotion_rules
+
+        actions = []
+        for info in self.list_workers():
+            try:
+                worker = Worker(info["name"], self.project_dir, self.config)
+            except Exception:
+                continue
+
+            # Take last review_window tasks
+            recent = worker.performance[-rules.review_window:]
+            ratings = [p["rating"] for p in recent if p.get("rating") is not None]
+
+            if len(ratings) < rules.min_tasks:
+                continue
+
+            avg = sum(ratings) / len(ratings)
+
+            if avg >= rules.promote_threshold and info["level"] < 5:
+                new_level = self.promote(info["name"])
+                actions.append({
+                    "worker": info["name"],
+                    "action": "promoted",
+                    "to_level": new_level,
+                    "avg_rating": round(avg, 2),
+                })
+            elif avg <= rules.demote_threshold and info["level"] > 1:
+                new_level = self.demote(info["name"])
+                actions.append({
+                    "worker": info["name"],
+                    "action": "demoted",
+                    "to_level": new_level,
+                    "avg_rating": round(avg, 2),
+                })
+
+        return actions
 
     def promote(self, worker_name: str) -> int:
         """Increment a worker's seniority level. Returns new level."""

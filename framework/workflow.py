@@ -17,7 +17,9 @@ from framework.db import get_db
 from framework.config import ProjectConfig
 from framework.events import Event, EventLog
 from framework.exceptions import WorkflowError
+from framework.hr import HR
 from framework.router import Router
+from framework.task_router import TaskRouter
 from framework.worker import Worker
 
 
@@ -189,7 +191,16 @@ class WorkflowEngine:
         message = _substitute_outputs(node.message, node_results)
 
         try:
-            worker = Worker(node.worker, self.config.project_dir, self.config)
+            worker_name = node.worker
+            if worker_name == "auto":
+                hr = HR(self.config, self.config.project_dir)
+                task_router = TaskRouter(self.config, hr)
+                selected = task_router.select_worker(message)
+                if selected is None:
+                    return (node.id, {"status": "failed", "output": "",
+                                      "error": "No workers available for auto-routing"})
+                worker_name = selected
+            worker = Worker(worker_name, self.config.project_dir, self.config)
             response, _ = worker.chat(message, self.router)
             result = {"status": "completed", "output": response[:2000]}
             self.event_log.emit(Event(

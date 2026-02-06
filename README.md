@@ -283,22 +283,25 @@ open-corp/
 ├── requirements.txt             # Python dependencies
 │
 ├── framework/                   # Core framework code
-│   ├── exceptions.py            # Shared exceptions (BudgetExceeded, ModelUnavailable, SchedulerError, WorkflowError, etc.)
-│   ├── config.py                # Project configuration loader (charter.yaml + .env)
+│   ├── exceptions.py            # Shared exceptions (BudgetExceeded, ModelUnavailable, RegistryError, MarketplaceError, etc.)
+│   ├── config.py                # Project configuration loader (charter.yaml + .env) with PromotionRules
 │   ├── accountant.py            # Budget guardrail (runs before every API call)
 │   ├── router.py                # Model selection, OpenRouter integration, tier fallback
 │   ├── knowledge.py             # Knowledge base: chunking, keyword search, validation
-│   ├── worker.py                # Worker class (profile, memory, knowledge, skills, chat)
-│   ├── hr.py                    # Hiring, training (document/web/YouTube), firing, promoting
+│   ├── worker.py                # Worker class (profile, memory, knowledge, skills, chat, performance_summary)
+│   ├── hr.py                    # Hiring, training, firing, promote/demote, team_review, auto_review
+│   ├── task_router.py           # Smart task routing (skill match + performance + seniority scoring)
 │   ├── events.py                # Event system: TinyDB-backed log with in-memory pub/sub
 │   ├── scheduler.py             # Scheduled task execution (APScheduler daemon)
-│   ├── workflow.py              # DAG workflow engine (parallel execution by depth layer)
+│   ├── workflow.py              # DAG workflow engine (parallel execution, worker: auto support)
 │   ├── db.py                    # Thread-safe TinyDB wrapper (singleton per path + Lock)
+│   ├── registry.py              # Multi-operation project registry (~/.open-corp/)
+│   ├── marketplace.py           # Remote template marketplace client
 │   ├── webhooks.py              # Flask webhook server with bearer token auth
 │   └── broker.py                # Paper trading broker (TinyDB ledger + optional yfinance)
 │
 ├── scripts/
-│   ├── corp.py                  # CLI — init, status, budget, workers, hire, chat, train, inspect, knowledge, schedule, workflow, daemon, events, webhook, broker
+│   ├── corp.py                  # CLI — init, status, budget, workers, hire, chat, train, inspect, knowledge, schedule, workflow, daemon, events, webhook, broker, ops, review, delegate, marketplace
 │   └── telegram_bot.py          # Telegram bot interface
 │
 ├── templates/                   # Starter worker templates
@@ -312,16 +315,16 @@ open-corp/
 ├── workflows/                   # Example workflow definitions
 │   └── example_trading.yaml     # Parallel scan + recommendation DAG
 │
-├── tests/                       # 252 tests (pytest + respx)
+├── tests/                       # 321 tests (pytest + respx)
 │   ├── conftest.py              # Shared fixtures
-│   ├── test_config.py           # 8 tests
+│   ├── test_config.py           # 10 tests
 │   ├── test_accountant.py       # 12 tests
 │   ├── test_router.py           # 14 tests
-│   ├── test_exceptions.py       # 7 tests
+│   ├── test_exceptions.py       # 9 tests
 │   ├── test_templates.py        # 5 tests
-│   ├── test_worker.py           # 24 tests
-│   ├── test_hr.py               # 21 tests
-│   ├── test_cli.py              # 38 tests
+│   ├── test_worker.py           # 30 tests
+│   ├── test_hr.py               # 29 tests
+│   ├── test_cli.py              # 54 tests
 │   ├── test_knowledge.py        # 23 tests
 │   ├── test_telegram_bot.py     # 11 tests
 │   ├── test_events.py           # 13 tests
@@ -329,7 +332,10 @@ open-corp/
 │   ├── test_workflow.py         # 21 tests
 │   ├── test_db.py               # 12 tests
 │   ├── test_webhooks.py         # 14 tests
-│   └── test_broker.py           # 16 tests
+│   ├── test_broker.py           # 16 tests
+│   ├── test_registry.py         # 15 tests
+│   ├── test_task_router.py      # 8 tests
+│   └── test_marketplace.py      # 12 tests
 │
 ├── projects/                    # YOUR projects go here
 │   └── .gitkeep
@@ -376,8 +382,8 @@ These principles are encoded in the `CLAUDE.md` file that your LLM reads automat
 | **v0.2** | Worker training from documents, web pages, YouTube playlists; knowledge search; 117 tests |
 | **v0.3** | `corp init` wizard, multi-turn chat, `corp inspect`, 3 new templates, improved errors; 145 tests |
 | **v0.4** | Event system, scheduled tasks (APScheduler), DAG workflow engine, chat truncation; 185 tests |
-| **v0.5** (current) | Thread-safe DB, parallel workflows, webhook server, paper trading broker, daemon improvements; 252 tests |
-| **v1.0** | Production-ready, self-optimizing operations, community marketplace |
+| **v0.5** | Thread-safe DB, parallel workflows, webhook server, paper trading broker, daemon improvements; 252 tests |
+| **v1.0** (current) | Multi-ops management, template marketplace, self-optimizing workers, smart task routing, MkDocs docs; 321 tests |
 
 See [ROADMAP.md](ROADMAP.md) for full details.
 

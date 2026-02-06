@@ -80,3 +80,35 @@ class TestProjectConfig:
         (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
         config = ProjectConfig.load(tmp_path)
         assert config.worker_defaults.max_history_messages == 20
+
+    def test_promotion_rules_from_charter(self, tmp_path):
+        """PromotionRules parsed from charter.yaml promotion_rules section."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+            "promotion_rules": {
+                "min_tasks": 10,
+                "promote_threshold": 4.5,
+                "demote_threshold": 1.5,
+                "review_window": 30,
+            },
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.promotion_rules.min_tasks == 10
+        assert config.promotion_rules.promote_threshold == 4.5
+        assert config.promotion_rules.demote_threshold == 1.5
+        assert config.promotion_rules.review_window == 30
+
+    def test_marketplace_url_from_charter(self, tmp_path):
+        """marketplace.registry_url parsed from charter.yaml."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+            "marketplace": {
+                "registry_url": "https://example.com/registry.yaml",
+            },
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.marketplace_url == "https://example.com/registry.yaml"

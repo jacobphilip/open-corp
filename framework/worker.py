@@ -264,6 +264,34 @@ class Worker:
         path = self.worker_dir / "memory.json"
         path.write_text(json.dumps(self.memory, indent=2))
 
+    def performance_summary(self) -> dict:
+        """Aggregate performance stats.
+
+        Returns dict with: task_count, avg_rating, success_rate, rated_count, trend.
+        Trend = second half avg rating minus first half avg rating (needs 4+ rated tasks).
+        """
+        total = len(self.performance)
+        rated = [p["rating"] for p in self.performance if p.get("rating") is not None]
+        successes = sum(1 for p in self.performance if p.get("result") == "completed")
+
+        avg_rating = sum(rated) / len(rated) if rated else 0.0
+        success_rate = successes / total if total > 0 else 0.0
+
+        trend = 0.0
+        if len(rated) >= 4:
+            mid = len(rated) // 2
+            first_half = rated[:mid]
+            second_half = rated[mid:]
+            trend = (sum(second_half) / len(second_half)) - (sum(first_half) / len(first_half))
+
+        return {
+            "task_count": total,
+            "avg_rating": round(avg_rating, 2),
+            "success_rate": round(success_rate, 2),
+            "rated_count": len(rated),
+            "trend": round(trend, 2),
+        }
+
     def record_performance(self, task: str, result: str, rating: int | None = None) -> None:
         """Record a task result in performance history."""
         self.performance.append({

@@ -192,6 +192,71 @@ class TestWorker:
         assert response == "Here's what I know about cooking."
 
 
+class TestPerformanceSummary:
+    def test_performance_summary_empty(self, tmp_project, config):
+        """All zeros when no performance data."""
+        _create_worker_files(tmp_project / "workers" / "ps1")
+        worker = Worker("ps1", tmp_project, config)
+        summary = worker.performance_summary()
+        assert summary["task_count"] == 0
+        assert summary["avg_rating"] == 0.0
+        assert summary["success_rate"] == 0.0
+        assert summary["rated_count"] == 0
+        assert summary["trend"] == 0.0
+
+    def test_performance_summary_rated(self, tmp_project, config):
+        """Correct avg_rating from rated tasks."""
+        _create_worker_files(tmp_project / "workers" / "ps2")
+        worker = Worker("ps2", tmp_project, config)
+        worker.record_performance("t1", "completed", rating=4)
+        worker.record_performance("t2", "completed", rating=5)
+        summary = worker.performance_summary()
+        assert summary["task_count"] == 2
+        assert summary["avg_rating"] == 4.5
+        assert summary["rated_count"] == 2
+
+    def test_performance_summary_success_rate(self, tmp_project, config):
+        """success_rate = completed count / total."""
+        _create_worker_files(tmp_project / "workers" / "ps3")
+        worker = Worker("ps3", tmp_project, config)
+        worker.record_performance("t1", "completed", rating=5)
+        worker.record_performance("t2", "failed", rating=2)
+        worker.record_performance("t3", "completed", rating=4)
+        summary = worker.performance_summary()
+        assert summary["success_rate"] == round(2 / 3, 2)
+
+    def test_performance_summary_trend(self, tmp_project, config):
+        """Trend = second half avg minus first half avg."""
+        _create_worker_files(tmp_project / "workers" / "ps4")
+        worker = Worker("ps4", tmp_project, config)
+        # First half: ratings 2, 2 → avg 2.0
+        # Second half: ratings 4, 5 → avg 4.5
+        for r in [2, 2, 4, 5]:
+            worker.record_performance(f"t{r}", "completed", rating=r)
+        summary = worker.performance_summary()
+        assert summary["trend"] == 2.5
+
+    def test_performance_summary_unrated(self, tmp_project, config):
+        """rating=None excluded from avg."""
+        _create_worker_files(tmp_project / "workers" / "ps5")
+        worker = Worker("ps5", tmp_project, config)
+        worker.record_performance("t1", "completed", rating=4)
+        worker.record_performance("t2", "completed", rating=None)
+        summary = worker.performance_summary()
+        assert summary["avg_rating"] == 4.0
+        assert summary["rated_count"] == 1
+        assert summary["task_count"] == 2
+
+    def test_performance_summary_few_tasks_no_trend(self, tmp_project, config):
+        """Trend=0 with <4 rated tasks."""
+        _create_worker_files(tmp_project / "workers" / "ps6")
+        worker = Worker("ps6", tmp_project, config)
+        worker.record_performance("t1", "completed", rating=5)
+        worker.record_performance("t2", "completed", rating=1)
+        summary = worker.performance_summary()
+        assert summary["trend"] == 0.0
+
+
 class TestChatHistoryTruncation:
     """Tests for chat history truncation."""
 

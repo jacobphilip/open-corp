@@ -53,6 +53,12 @@ CHARTER_YAML = {
         "model": "deepseek/deepseek-chat",
         "honest_ai": True,
     },
+    "promotion_rules": {
+        "min_tasks": 5,
+        "promote_threshold": 4.0,
+        "demote_threshold": 2.0,
+        "review_window": 20,
+    },
 }
 
 

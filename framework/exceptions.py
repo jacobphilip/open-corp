@@ -114,3 +114,27 @@ class WebhookError(Exception):
         if suggestion:
             msg += f"\n  Try: {suggestion}"
         super().__init__(msg)
+
+
+class RegistryError(Exception):
+    """Raised when an operation registry action fails."""
+
+    def __init__(self, reason: str, suggestion: str = ""):
+        self.reason = reason
+        self.suggestion = suggestion
+        msg = f"Registry error: {reason}"
+        if suggestion:
+            msg += f"\n  Try: {suggestion}"
+        super().__init__(msg)
+
+
+class MarketplaceError(Exception):
+    """Raised when a marketplace operation fails."""
+
+    def __init__(self, reason: str, suggestion: str = ""):
+        self.reason = reason
+        self.suggestion = suggestion
+        msg = f"Marketplace error: {reason}"
+        if suggestion:
+            msg += f"\n  Try: {suggestion}"
+        super().__init__(msg)

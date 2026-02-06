@@ -4,7 +4,9 @@ from framework.exceptions import (
     BrokerError,
     BudgetExceeded,
     ConfigError,
+    MarketplaceError,
     ModelUnavailable,
+    RegistryError,
     SchedulerError,
     TrainingError,
     WebhookError,
@@ -85,4 +87,26 @@ class TestExceptionSuggestions:
 
         err2 = WebhookError("server error")
         assert "server error" in str(err2)
+        assert "Try:" not in str(err2)
+
+    def test_registry_error(self):
+        """RegistryError includes reason and optional suggestion."""
+        err = RegistryError("not found", suggestion="Check registry")
+        assert "not found" in str(err)
+        assert "Try: Check registry" in str(err)
+        assert err.reason == "not found"
+
+        err2 = RegistryError("duplicate")
+        assert "duplicate" in str(err2)
+        assert "Try:" not in str(err2)
+
+    def test_marketplace_error(self):
+        """MarketplaceError includes reason and optional suggestion."""
+        err = MarketplaceError("network timeout", suggestion="Retry later")
+        assert "network timeout" in str(err)
+        assert "Try: Retry later" in str(err)
+        assert err.reason == "network timeout"
+
+        err2 = MarketplaceError("not found")
+        assert "not found" in str(err2)
         assert "Try:" not in str(err2)

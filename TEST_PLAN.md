@@ -1,6 +1,6 @@
 # Test Plan — open-corp
 
-Version: **0.5.0** | Total tests: **252** | Status: **All passing**
+Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 
 ---
 
@@ -14,7 +14,7 @@ Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 
 ---
 
-## test_config.py — 8 tests
+## test_config.py — 10 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -26,6 +26,8 @@ Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 | 6 | test_bad_yaml | Raises ConfigError for unparseable YAML |
 | 7 | test_defaults_when_optional_sections_missing | Optional sections get sensible defaults |
 | 8 | test_max_history_messages_from_charter | max_history_messages parsed from charter.yaml |
+| 9 | test_promotion_rules_from_charter | PromotionRules parsed from charter.yaml |
+| 10 | test_marketplace_url_from_charter | marketplace.registry_url parsed from charter.yaml |
 
 ---
 
@@ -99,7 +101,7 @@ Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 
 ---
 
-## test_exceptions.py — 7 tests
+## test_exceptions.py — 9 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -110,6 +112,8 @@ Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 | 5 | test_workflow_error | WorkflowError with/without node and suggestion |
 | 6 | test_broker_error | BrokerError reason and suggestion |
 | 7 | test_webhook_error | WebhookError reason and suggestion |
+| 8 | test_registry_error | RegistryError reason and suggestion |
+| 9 | test_marketplace_error | MarketplaceError reason and suggestion |
 
 ---
 
@@ -125,7 +129,7 @@ Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 
 ---
 
-## test_worker.py — 24 tests
+## test_worker.py — 30 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -142,21 +146,27 @@ Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 | 11 | test_build_system_prompt_no_knowledge | Without knowledge_base, prompt works (backward compat) |
 | 12 | test_knowledge_and_memory_budget_sharing | Both knowledge and memory fit within budget |
 | 13 | test_chat_passes_query_to_prompt | User message flows as query to build_system_prompt |
-| 14 | test_chat_history_truncation | History exceeding max truncated to most recent |
-| 15 | test_chat_history_truncation_default | Default 50 works without truncation |
-| 16 | test_chat_truncation_returned_history | Returned history reflects truncation + new exchange |
-| 17 | test_chat_returns_tuple | chat() returns (str, list) |
-| 18 | test_chat_with_history | History included in API messages |
-| 19 | test_chat_history_accumulates | Two calls → 4-entry history |
-| 20 | test_chat_without_history_backward_compat | history=None works |
-| 21 | test_summarize_session | Summary returned from API call |
-| 22 | test_summarize_session_empty_history | Empty → returns "" |
-| 23 | test_summarize_session_records_memory | Memory entry type "session_summary" |
-| 24 | test_summarize_session_api_call | Router called with conversation |
+| 14 | test_performance_summary_empty | All zeros when no data |
+| 15 | test_performance_summary_rated | Correct avg_rating |
+| 16 | test_performance_summary_success_rate | success count / total |
+| 17 | test_performance_summary_trend | Second half vs first half |
+| 18 | test_performance_summary_unrated | rating=None excluded from avg |
+| 19 | test_performance_summary_few_tasks_no_trend | Trend=0 with <4 rated |
+| 20 | test_chat_history_truncation | History exceeding max truncated to most recent |
+| 21 | test_chat_history_truncation_default | Default 50 works without truncation |
+| 22 | test_chat_truncation_returned_history | Returned history reflects truncation + new exchange |
+| 23 | test_chat_returns_tuple | chat() returns (str, list) |
+| 24 | test_chat_with_history | History included in API messages |
+| 25 | test_chat_history_accumulates | Two calls → 4-entry history |
+| 26 | test_chat_without_history_backward_compat | history=None works |
+| 27 | test_summarize_session | Summary returned from API call |
+| 28 | test_summarize_session_empty_history | Empty → returns "" |
+| 29 | test_summarize_session_records_memory | Memory entry type "session_summary" |
+| 30 | test_summarize_session_api_call | Router called with conversation |
 
 ---
 
-## test_hr.py — 21 tests
+## test_hr.py — 29 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -168,23 +178,31 @@ Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 | 6 | test_fire_worker | Requires confirm=True, removes directory |
 | 7 | test_fire_nonexistent | Missing worker → WorkerNotFound |
 | 8 | test_promote | Increments level, caps at 5 |
-| 9 | test_train_from_text_file | Trains from .txt file, creates knowledge entries |
-| 10 | test_train_from_markdown | Trains from .md file |
-| 11 | test_train_from_pdf | Trains from PDF (mocked pypdf) |
-| 12 | test_train_from_document_not_found | Missing file → TrainingError |
-| 13 | test_train_from_unsupported_extension | Bad extension → TrainingError |
-| 14 | test_train_from_document_stores_chunks | Chunks persisted to knowledge.json |
-| 15 | test_train_from_url_success | Web page training with mocked HTTP |
-| 16 | test_train_from_url_not_html | Non-HTML content type → TrainingError |
-| 17 | test_train_from_url_network_error | Network error → TrainingError |
-| 18 | test_train_from_url_stores_chunks | URL chunks persisted |
-| 19 | test_train_from_youtube_playlist | Playlist extracts video IDs, processes each |
-| 20 | test_train_from_youtube_playlist_max_cap | Playlist caps at max_videos |
-| 21 | test_train_from_youtube_raises_training_error | YouTube failure raises TrainingError |
+| 9 | test_demote_success | Level decremented |
+| 10 | test_demote_minimum_level | Level stays at 1 |
+| 11 | test_demote_worker_not_found | WorkerNotFound raised |
+| 12 | test_team_review_ranked | Workers sorted by avg_rating desc |
+| 13 | test_team_review_empty | Empty list when no workers |
+| 14 | test_auto_review_promotes | High performer promoted |
+| 15 | test_auto_review_demotes | Low performer demoted |
+| 16 | test_auto_review_skips_few_tasks | Worker with too few tasks skipped |
+| 17 | test_train_from_text_file | Trains from .txt file, creates knowledge entries |
+| 18 | test_train_from_markdown | Trains from .md file |
+| 19 | test_train_from_pdf | Trains from PDF (mocked pypdf) |
+| 20 | test_train_from_document_not_found | Missing file → TrainingError |
+| 21 | test_train_from_unsupported_extension | Bad extension → TrainingError |
+| 22 | test_train_from_document_stores_chunks | Chunks persisted to knowledge.json |
+| 23 | test_train_from_url_success | Web page training with mocked HTTP |
+| 24 | test_train_from_url_not_html | Non-HTML content type → TrainingError |
+| 25 | test_train_from_url_network_error | Network error → TrainingError |
+| 26 | test_train_from_url_stores_chunks | URL chunks persisted |
+| 27 | test_train_from_youtube_playlist | Playlist extracts video IDs, processes each |
+| 28 | test_train_from_youtube_playlist_max_cap | Playlist caps at max_videos |
+| 29 | test_train_from_youtube_raises_training_error | YouTube failure raises TrainingError |
 
 ---
 
-## test_cli.py — 38 tests
+## test_cli.py — 54 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -219,13 +237,29 @@ Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 | 29 | test_chat_multi_turn_history | Two messages, 3 API calls (2 chat + 1 summary) |
 | 30 | test_chat_summarizes_on_quit | "Session summary saved" in output |
 | 31 | test_chat_summary_failure_graceful | API error → fallback message |
-| 32 | test_daemon_status_not_running | "not running" when no PID file |
-| 33 | test_daemon_stop_not_running | exit 1 when not running |
-| 34 | test_daemon_start_already_running | exit 1 when PID file with live process |
-| 35 | test_webhook_keygen | Outputs a key |
-| 36 | test_webhook_start_missing_key | exit 1 without WEBHOOK_API_KEY |
-| 37 | test_broker_account | Shows cash, equity, P&L |
-| 38 | test_broker_buy_sell | Paper trade round trip |
+| 32 | test_marketplace_list | Lists templates from registry |
+| 33 | test_marketplace_search | Searches templates |
+| 34 | test_marketplace_info | Shows template details |
+| 35 | test_marketplace_install | Installs template files |
+| 36 | test_review_team | Team scorecard shows workers |
+| 37 | test_review_single_worker | Individual performance summary |
+| 38 | test_review_auto | --auto runs auto_review |
+| 39 | test_delegate | Auto-selects worker and chats |
+| 40 | test_ops_list_empty | No operations registered |
+| 41 | test_ops_create_and_list | Create shows in list |
+| 42 | test_ops_switch | Sets active operation |
+| 43 | test_ops_active | Shows current active |
+| 44 | test_ops_remove | Unregisters operation |
+| 45 | test_ops_switch_unknown | Error for unknown name |
+| 46 | test_ops_remove_unknown | Error for unknown name |
+| 47 | test_init_auto_registers | corp init adds to registry |
+| 48 | test_daemon_status_not_running | "not running" when no PID file |
+| 49 | test_daemon_stop_not_running | exit 1 when not running |
+| 50 | test_daemon_start_already_running | exit 1 when PID file with live process |
+| 51 | test_webhook_keygen | Outputs a key |
+| 52 | test_webhook_start_missing_key | exit 1 without WEBHOOK_API_KEY |
+| 53 | test_broker_account | Shows cash, equity, P&L |
+| 54 | test_broker_buy_sell | Paper trade round trip |
 
 ---
 
@@ -378,7 +412,63 @@ Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 
 ---
 
-## Coverage Gaps (known, acceptable for v0.5)
+## test_registry.py — 15 tests (NEW in v1.0)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_register_creates_entry | Name→path stored in JSON |
+| 2 | test_register_multiple | Multiple operations coexist |
+| 3 | test_unregister_removes_entry | Entry removed from JSON |
+| 4 | test_unregister_not_found | RegistryError raised |
+| 5 | test_unregister_clears_active | Active cleared when unregistered |
+| 6 | test_list_operations_empty | Empty dict when no registry |
+| 7 | test_list_operations_with_data | Returns all registered |
+| 8 | test_get_path_exists | Returns resolved Path |
+| 9 | test_get_path_not_found | Returns None |
+| 10 | test_set_active_success | Active file written |
+| 11 | test_set_active_not_registered | RegistryError raised |
+| 12 | test_get_active_none | None when no active file |
+| 13 | test_get_active_path_round_trip | set_active → get_active_path round trip |
+| 14 | test_corrupt_registry_json | Returns empty dict gracefully |
+| 15 | test_registry_dir_created_on_write | Parent dirs auto-created |
+
+---
+
+## test_task_router.py — 8 tests (NEW in v1.0)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_select_best_skill_match | Worker with matching skills wins |
+| 2 | test_select_no_workers | Returns None |
+| 3 | test_select_performance_factor | Higher-rated worker preferred |
+| 4 | test_select_seniority_factor | Higher-level worker gets bonus |
+| 5 | test_select_specified_workers | Only considers given list |
+| 6 | test_select_handles_worker_error | Gracefully skips broken worker |
+| 7 | test_select_empty_description | Returns a worker (doesn't crash) |
+| 8 | test_select_equal_workers | Deterministic pick |
+
+---
+
+## test_marketplace.py — 12 tests (NEW in v1.0)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_list_templates | Parsed from YAML registry |
+| 2 | test_search_by_name | Name match |
+| 3 | test_search_by_tag | Tag match |
+| 4 | test_search_case_insensitive | Case doesn't matter |
+| 5 | test_search_no_results | Empty list |
+| 6 | test_info_found | Returns template dict |
+| 7 | test_info_not_found | Returns None |
+| 8 | test_install_success | Files downloaded to templates/ |
+| 9 | test_install_already_exists | MarketplaceError raised |
+| 10 | test_install_not_in_registry | MarketplaceError raised |
+| 11 | test_install_network_error | MarketplaceError + cleanup |
+| 12 | test_corrupt_registry_yaml | MarketplaceError raised |
+
+---
+
+## Coverage Gaps (known, acceptable for v1.0)
 
 - **YouTube training pipeline:** No automated tests for actual download/transcribe (requires yt-dlp + whisper)
 - **PDF training:** Uses mocked pypdf in tests (real PDF parsing tested manually)
@@ -389,4 +479,4 @@ Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 
 ---
 
-Total tests: **252** | All passing
+Total tests: **321** | All passing

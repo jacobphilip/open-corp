@@ -5,6 +5,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.0.0] — 2026-02-05
+
+### Added
+- **Multi-Operation Management** — `~/.open-corp/` registry for managing multiple projects; `corp ops create/list/switch/remove/active` commands
+- **Template Marketplace** — httpx client for fetching/searching/installing templates from a remote YAML registry; `corp marketplace list/search/info/install` commands
+- **Self-Optimizing Operations** — `Worker.performance_summary()` aggregation, `HR.demote()`/`team_review()`/`auto_review()` with configurable `PromotionRules`
+- **Smart Task Routing** — `TaskRouter.select_worker()` scoring (skill match 50% + performance 35% + seniority 15%); `worker: auto` in workflow nodes
+- **framework/registry.py** — `OperationRegistry` class with JSON-backed name→path mapping
+- **framework/task_router.py** — `TaskRouter` class for skill/performance/seniority-based worker selection
+- **framework/marketplace.py** — `Marketplace` class for remote template registry browsing and installation
+- **framework/config.py** — `PromotionRules` dataclass, `marketplace_url` field on `ProjectConfig`
+- **framework/exceptions.py** — `RegistryError` and `MarketplaceError` exception classes
+- **scripts/corp.py** — New CLI commands: `ops create/list/switch/remove/active`, `review [worker] [--auto]`, `delegate <message>`, `marketplace list/search/info/install`
+- **docs/** — Full MkDocs documentation site with 14 pages (quickstart, CLI reference, configuration, architecture, API, migration, troubleshooting, contributing)
+- **mkdocs.yml** — MkDocs Material theme configuration
+- **tests/test_registry.py** — 15 tests for OperationRegistry
+- **tests/test_task_router.py** — 8 tests for TaskRouter
+- **tests/test_marketplace.py** — 12 tests for Marketplace
+- **tests/test_exceptions.py** — +2 tests for RegistryError and MarketplaceError
+- **tests/test_config.py** — +2 tests for PromotionRules and marketplace_url parsing
+- **tests/test_worker.py** — +6 tests for performance_summary
+- **tests/test_hr.py** — +8 tests for demote/team_review/auto_review
+- **tests/test_cli.py** — +16 tests for ops/marketplace/review/delegate commands
+- **pyproject.toml** — `docs` optional dependency group (mkdocs, mkdocs-material, mkdocstrings)
+
+### Changed
+- `_load_project()` now checks active operation from registry before falling back to cwd (backward-compatible)
+- `corp init` auto-registers new projects in the operation registry
+- `framework/workflow.py` supports `worker: auto` in node definitions for smart task routing
+- Total test count: 252 → 321
+
+---
+
 ## [0.5.0] — 2026-02-05
 
 ### Added
