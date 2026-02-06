@@ -1,13 +1,18 @@
-"""DAG workflow engine — YAML-defined, synchronous execution in topological order."""
+"""DAG workflow engine — YAML-defined, parallel execution by depth layer."""
 
 import re
+import threading
 import uuid
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from tinydb import TinyDB, Query
+from tinydb import Query
+
+from framework.db import get_db
 
 from framework.config import ProjectConfig
 from framework.events import Event, EventLog
@@ -105,6 +110,28 @@ def topological_sort(nodes: list[WorkflowNode]) -> list[WorkflowNode]:
     return result
 
 
+def _compute_depths(nodes: list[WorkflowNode]) -> dict[str, int]:
+    """Assign depth to each node. Roots = 0, others = max(dep depths) + 1."""
+    node_map = {n.id: n for n in nodes}
+    depths: dict[str, int] = {}
+
+    def compute(nid: str) -> int:
+        if nid in depths:
+            return depths[nid]
+        node = node_map[nid]
+        if not node.depends_on:
+            depths[nid] = 0
+        else:
+            depths[nid] = max(
+                compute(d) for d in node.depends_on if d in node_map
+            ) + 1
+        return depths[nid]
+
+    for n in nodes:
+        compute(n.id)
+    return depths
+
+
 def _substitute_outputs(message: str, node_results: dict) -> str:
     """Replace {node_id.output} placeholders with actual outputs."""
     def replacer(match):
@@ -139,7 +166,7 @@ def _check_condition(condition: str, depends_on: list[str], node_results: dict) 
 
 
 class WorkflowEngine:
-    """Executes DAG workflows synchronously in topological order."""
+    """Executes DAG workflows with parallel fan-out by depth layer."""
 
     def __init__(self, config: ProjectConfig, accountant, router: Router,
                  event_log: EventLog, db_path: Path | None = None):
@@ -148,12 +175,43 @@ class WorkflowEngine:
         self.router = router
         self.event_log = event_log
         self.db_path = db_path or config.project_dir / "data" / "workflows.json"
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = TinyDB(str(self.db_path))
+        self._db, self._db_lock = get_db(self.db_path)
 
-    def run(self, workflow: Workflow) -> WorkflowRun:
-        """Execute a workflow. Returns the completed WorkflowRun."""
+    def _execute_node(self, node: WorkflowNode, node_results: dict,
+                      workflow_name: str, run_id: str) -> tuple[str, dict]:
+        """Execute one node. Returns (node_id, result_dict)."""
+        # Check dependencies and conditions
+        if node.depends_on:
+            if not _check_condition(node.condition, node.depends_on, node_results):
+                return (node.id, {"status": "skipped", "output": ""})
+
+        # Substitute outputs in message
+        message = _substitute_outputs(node.message, node_results)
+
+        try:
+            worker = Worker(node.worker, self.config.project_dir, self.config)
+            response, _ = worker.chat(message, self.router)
+            result = {"status": "completed", "output": response[:2000]}
+            self.event_log.emit(Event(
+                type="workflow.node_completed",
+                source=f"workflow:{workflow_name}",
+                data={"run_id": run_id, "node": node.id, "status": "completed"},
+            ))
+            return (node.id, result)
+        except Exception as e:
+            result = {"status": "failed", "output": "", "error": str(e)}
+            self.event_log.emit(Event(
+                type="workflow.node_completed",
+                source=f"workflow:{workflow_name}",
+                data={"run_id": run_id, "node": node.id, "status": "failed",
+                      "error": str(e)},
+            ))
+            return (node.id, result)
+
+    def run(self, workflow: Workflow, max_workers: int = 4) -> WorkflowRun:
+        """Execute a workflow with parallel fan-out. Returns the completed WorkflowRun."""
         sorted_nodes = topological_sort(workflow.nodes)
+        depths = _compute_depths(sorted_nodes)
 
         run = WorkflowRun(
             id=uuid.uuid4().hex[:8],
@@ -168,57 +226,44 @@ class WorkflowEngine:
             data={"run_id": run.id, "nodes": [n.id for n in sorted_nodes]},
         ))
 
-        has_failures = False
-
+        # Group nodes by depth for parallel execution
+        by_depth: dict[int, list[WorkflowNode]] = defaultdict(list)
         for node in sorted_nodes:
-            # Check dependencies and conditions
-            if node.depends_on:
-                if not _check_condition(node.condition, node.depends_on, run.node_results):
-                    run.node_results[node.id] = {"status": "skipped", "output": ""}
-                    continue
+            by_depth[depths[node.id]].append(node)
 
-            # Substitute outputs in message
-            message = _substitute_outputs(node.message, run.node_results)
+        has_failures = False
+        result_lock = threading.Lock()
 
-            try:
-                worker = Worker(node.worker, self.config.project_dir, self.config)
-                response, _ = worker.chat(message, self.router)
-                # Truncate for storage
-                run.node_results[node.id] = {
-                    "status": "completed",
-                    "output": response[:2000],
+        for depth in sorted(by_depth):
+            nodes_at_depth = by_depth[depth]
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {
+                    pool.submit(
+                        self._execute_node, node, run.node_results,
+                        workflow.name, run.id,
+                    ): node.id
+                    for node in nodes_at_depth
                 }
-                self.event_log.emit(Event(
-                    type="workflow.node_completed",
-                    source=f"workflow:{workflow.name}",
-                    data={"run_id": run.id, "node": node.id, "status": "completed"},
-                ))
-            except Exception as e:
-                has_failures = True
-                run.node_results[node.id] = {
-                    "status": "failed",
-                    "output": "",
-                    "error": str(e),
-                }
-                self.event_log.emit(Event(
-                    type="workflow.node_completed",
-                    source=f"workflow:{workflow.name}",
-                    data={"run_id": run.id, "node": node.id, "status": "failed",
-                          "error": str(e)},
-                ))
+                for future in as_completed(futures):
+                    node_id, result = future.result()
+                    with result_lock:
+                        run.node_results[node_id] = result
+                    if result["status"] == "failed":
+                        has_failures = True
 
         run.status = "failed" if has_failures else "completed"
         run.completed_at = datetime.now(timezone.utc).isoformat()
 
         # Persist run
-        self._db.insert({
-            "id": run.id,
-            "workflow_name": run.workflow_name,
-            "status": run.status,
-            "node_results": run.node_results,
-            "started_at": run.started_at,
-            "completed_at": run.completed_at,
-        })
+        with self._db_lock:
+            self._db.insert({
+                "id": run.id,
+                "workflow_name": run.workflow_name,
+                "status": run.status,
+                "node_results": run.node_results,
+                "started_at": run.started_at,
+                "completed_at": run.completed_at,
+            })
 
         event_type = "workflow.completed" if run.status == "completed" else "workflow.failed"
         self.event_log.emit(Event(
@@ -231,13 +276,15 @@ class WorkflowEngine:
 
     def list_runs(self, workflow_name: str | None = None) -> list[dict]:
         """List workflow runs, optionally filtered by name."""
-        if workflow_name:
-            Q = Query()
-            return self._db.search(Q.workflow_name == workflow_name)
-        return self._db.all()
+        with self._db_lock:
+            if workflow_name:
+                Q = Query()
+                return self._db.search(Q.workflow_name == workflow_name)
+            return self._db.all()
 
     def get_run(self, run_id: str) -> dict | None:
         """Get a single workflow run by ID."""
         Q = Query()
-        results = self._db.search(Q.id == run_id)
+        with self._db_lock:
+            results = self._db.search(Q.id == run_id)
         return results[0] if results else None

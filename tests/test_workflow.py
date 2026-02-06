@@ -14,7 +14,7 @@ from framework.exceptions import WorkflowError
 from framework.router import OPENROUTER_API_URL, Router
 from framework.workflow import (
     Workflow, WorkflowEngine, WorkflowNode,
-    _check_condition, _substitute_outputs, topological_sort,
+    _check_condition, _compute_depths, _substitute_outputs, topological_sort,
 )
 
 
@@ -229,3 +229,117 @@ class TestWorkflowEngine:
         assert len(all_runs) == 1
         filtered = engine.list_runs(workflow_name="persist")
         assert len(filtered) == 1
+
+
+class TestComputeDepths:
+    def test_compute_depths_single(self):
+        """Single node gets depth 0."""
+        nodes = [WorkflowNode(id="a", worker="w", message="")]
+        depths = _compute_depths(nodes)
+        assert depths == {"a": 0}
+
+    def test_compute_depths_chain(self):
+        """A→B→C → depths 0, 1, 2."""
+        nodes = [
+            WorkflowNode(id="a", worker="w", message=""),
+            WorkflowNode(id="b", worker="w", message="", depends_on=["a"]),
+            WorkflowNode(id="c", worker="w", message="", depends_on=["b"]),
+        ]
+        depths = _compute_depths(nodes)
+        assert depths == {"a": 0, "b": 1, "c": 2}
+
+    def test_compute_depths_diamond(self):
+        """A→(B,C)→D → B,C at depth 1, D at depth 2."""
+        nodes = [
+            WorkflowNode(id="a", worker="w", message=""),
+            WorkflowNode(id="b", worker="w", message="", depends_on=["a"]),
+            WorkflowNode(id="c", worker="w", message="", depends_on=["a"]),
+            WorkflowNode(id="d", worker="w", message="", depends_on=["b", "c"]),
+        ]
+        depths = _compute_depths(nodes)
+        assert depths["a"] == 0
+        assert depths["b"] == 1
+        assert depths["c"] == 1
+        assert depths["d"] == 2
+
+
+class TestParallelExecution:
+    def test_parallel_two_independent(self, workflow_env):
+        """A, B (no deps) run, both complete."""
+        engine, event_log, tmp_project = workflow_env
+        wf = Workflow(name="parallel", description="test", nodes=[
+            WorkflowNode(id="a", worker="researcher", message="do A"),
+            WorkflowNode(id="b", worker="writer", message="do B"),
+        ])
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(side_effect=[
+                _mock_response("result A"),
+                _mock_response("result B"),
+            ])
+            run = engine.run(wf)
+
+        assert run.status == "completed"
+        assert run.node_results["a"]["status"] == "completed"
+        assert run.node_results["b"]["status"] == "completed"
+
+    def test_parallel_diamond_dag(self, workflow_env):
+        """A→(B,C)→D: B and C same depth, run in parallel."""
+        engine, event_log, tmp_project = workflow_env
+        wf = Workflow(name="diamond", description="test", nodes=[
+            WorkflowNode(id="a", worker="researcher", message="start"),
+            WorkflowNode(id="b", worker="researcher", message="use {a.output}", depends_on=["a"]),
+            WorkflowNode(id="c", worker="writer", message="use {a.output}", depends_on=["a"]),
+            WorkflowNode(id="d", worker="researcher", message="combine {b.output} {c.output}",
+                         depends_on=["b", "c"]),
+        ])
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(side_effect=[
+                _mock_response("A result"),
+                _mock_response("B result"),
+                _mock_response("C result"),
+                _mock_response("D result"),
+            ])
+            run = engine.run(wf)
+
+        assert run.status == "completed"
+        for nid in ("a", "b", "c", "d"):
+            assert run.node_results[nid]["status"] == "completed"
+
+    def test_parallel_with_failure(self, workflow_env):
+        """Failed node skips downstream (same as sequential)."""
+        engine, event_log, tmp_project = workflow_env
+        wf = Workflow(name="fail", description="test", nodes=[
+            WorkflowNode(id="a", worker="researcher", message="fail"),
+            WorkflowNode(id="b", worker="writer", message="write",
+                         depends_on=["a"], condition="success"),
+        ])
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                return_value=httpx.Response(500, json={"error": "boom"})
+            )
+            run = engine.run(wf)
+
+        assert run.status == "failed"
+        assert run.node_results["a"]["status"] == "failed"
+        assert run.node_results["b"]["status"] == "skipped"
+
+    def test_parallel_max_workers(self, workflow_env):
+        """max_workers=1 forces sequential execution (same result)."""
+        engine, event_log, tmp_project = workflow_env
+        wf = Workflow(name="serial", description="test", nodes=[
+            WorkflowNode(id="a", worker="researcher", message="do A"),
+            WorkflowNode(id="b", worker="writer", message="do B"),
+        ])
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(side_effect=[
+                _mock_response("result A"),
+                _mock_response("result B"),
+            ])
+            run = engine.run(wf, max_workers=1)
+
+        assert run.status == "completed"
+        assert len(run.node_results) == 2
