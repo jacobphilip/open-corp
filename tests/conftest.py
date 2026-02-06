@@ -59,6 +59,16 @@ CHARTER_YAML = {
         "demote_threshold": 2.0,
         "review_window": 20,
     },
+    "logging": {
+        "level": "INFO",
+        "file": "",
+    },
+    "retention": {
+        "events_days": 90,
+        "spending_days": 90,
+        "workflows_days": 90,
+        "performance_max": 100,
+    },
 }
 
 

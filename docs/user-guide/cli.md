@@ -2,6 +2,10 @@
 
 All commands accept `--project-dir PATH` to specify the project directory. Without it, open-corp checks the active operation from the registry, then falls back to the current working directory.
 
+Global flags:
+
+- `--verbose / -v` — enable DEBUG-level logging (default: INFO)
+
 ## Core Commands
 
 ### `corp init`
@@ -50,6 +54,14 @@ View or search a worker's knowledge base.
 Options:
 
 - `--search QUERY` — filter entries by keyword
+
+### `corp fire <worker>`
+
+Fire a worker and clean up references. Removes scheduled tasks referencing the worker and warns about workflow files that reference them.
+
+Options:
+
+- `--yes / -y` — skip confirmation prompt
 
 ### `corp inspect [worker]`
 
@@ -108,6 +120,24 @@ Show details for a specific template.
 ### `corp marketplace install <name>`
 
 Download and install a template to `templates/`.
+
+## Housekeeping
+
+### `corp housekeep`
+
+Clean up old data based on retention policies configured in charter.yaml. Removes old events, spending records, workflow runs, and trims worker performance histories.
+
+Options:
+
+- `--dry-run` — show what would be removed without deleting
+
+### `corp validate`
+
+Validate project configuration and references. Checks that:
+
+- charter.yaml exists and parses correctly
+- Scheduled task worker references exist
+- Workflow YAML files parse correctly
 
 ## Scheduling
 

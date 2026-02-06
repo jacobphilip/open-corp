@@ -2,6 +2,7 @@
 
 import hmac
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Flask, request, jsonify
@@ -9,9 +10,12 @@ from flask import Flask, request, jsonify
 from framework.config import ProjectConfig
 from framework.events import Event, EventLog
 from framework.exceptions import WebhookError
+from framework.log import get_logger
 from framework.router import Router
 from framework.scheduler import Scheduler, ScheduledTask
 from framework.workflow import Workflow, WorkflowEngine
+
+logger = get_logger(__name__)
 
 
 def create_webhook_app(config: ProjectConfig, accountant, router: Router,
@@ -28,6 +32,7 @@ def create_webhook_app(config: ProjectConfig, accountant, router: Router,
             return None  # skip auth for health
         token = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
         if not api_key or not hmac.compare_digest(token, api_key):
+            logger.warning("Webhook auth failure from %s", request.remote_addr)
             return jsonify({"error": "unauthorized"}), 401
 
     @app.route("/health")
@@ -44,6 +49,12 @@ def create_webhook_app(config: ProjectConfig, accountant, router: Router,
         wf_path = Path(workflow_file)
         if not wf_path.is_absolute():
             wf_path = config.project_dir / wf_path
+        wf_path = wf_path.resolve()
+
+        # Validate resolved path is within project directory
+        project_root = config.project_dir.resolve()
+        if not str(wf_path).startswith(str(project_root) + "/") and wf_path != project_root:
+            return jsonify({"error": "workflow file must be within project directory"}), 400
 
         if not wf_path.exists():
             return jsonify({"error": f"workflow file not found: {workflow_file}"}), 400
@@ -53,6 +64,7 @@ def create_webhook_app(config: ProjectConfig, accountant, router: Router,
             run = engine.run(wf)
             return jsonify({"run_id": run.id, "status": run.status})
         except Exception as e:
+            logger.error("Webhook workflow error: %s", e)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/trigger/task", methods=["POST"])
@@ -73,8 +85,8 @@ def create_webhook_app(config: ProjectConfig, accountant, router: Router,
         if scheduler is None:
             return jsonify({"error": "scheduler not available"}), 500
 
-        schedule_type = "once" if run_at else "once"
-        schedule_value = run_at or "1970-01-01T00:00:00"
+        schedule_type = "once"
+        schedule_value = run_at or datetime.now(timezone.utc).isoformat()
 
         task = scheduler.add_task(ScheduledTask(
             worker_name=worker_name,

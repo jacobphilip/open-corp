@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.1.0] — 2026-02-05
+
+### Added
+- **framework/log.py** — Structured logging with `setup_logging()` and `get_logger()` using stdlib logging (no new deps)
+- **framework/housekeeping.py** — `Housekeeper` class for data retention: clean events, spending, workflows by age; trim performance records
+- **framework/config.py** — `LoggingConfig` and `RetentionConfig` dataclasses with charter.yaml parsing (optional sections, sensible defaults)
+- **scripts/corp.py** — New CLI commands: `fire`, `housekeep` (with `--dry-run`), `validate`; `--verbose/-v` global flag
+- **Workflow timeouts** — Per-node `timeout` (default 300s) and `retries` (default 0) fields; workflow-level `timeout` (0 = unlimited)
+- **Worker fire with cleanup** — `HR.fire()` accepts optional `scheduler` for task cleanup, scans workflows for references, returns `{removed_tasks, warnings}`
+- **Logging across framework** — Targeted log calls in router, accountant, scheduler, events, webhooks, workflow (2-3 per module, ~20 total)
+- **tests/test_logging.py** — 8 tests for logging module
+- **tests/test_housekeeping.py** — 14 tests for data retention
+- **tests/test_workflow.py** — +13 tests for timeouts and retries
+- **tests/test_hr.py** — +7 tests for enhanced fire with cleanup
+- **tests/test_cli.py** — +11 tests for fire, housekeep, validate, verbose
+- **tests/test_config.py** — +7 tests for LoggingConfig and RetentionConfig
+- **tests/test_webhooks.py** — +8 tests for schedule_type fix and path traversal
+
+### Fixed
+- **Webhook schedule_type bug** — `schedule_type` was always `"once"` regardless of `run_at`; `schedule_value` defaulted to `"1970-01-01T00:00:00"` instead of current UTC time
+- **Webhook path traversal** — Workflow file paths are now resolved and validated to be within the project directory
+
+### Changed
+- `HR.fire()` returns `dict` with `removed_tasks` and `warnings` instead of `None` (backward-compatible — no callers depended on return value)
+- Total test count: 321 → 388
+
+---
+
 ## [1.0.0] — 2026-02-05
 
 ### Added

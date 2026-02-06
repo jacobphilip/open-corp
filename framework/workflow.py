@@ -2,9 +2,10 @@
 
 import re
 import threading
+import time
 import uuid
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,9 +19,12 @@ from framework.config import ProjectConfig
 from framework.events import Event, EventLog
 from framework.exceptions import WorkflowError
 from framework.hr import HR
+from framework.log import get_logger
 from framework.router import Router
 from framework.task_router import TaskRouter
 from framework.worker import Worker
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -30,6 +34,8 @@ class WorkflowNode:
     message: str
     depends_on: list[str] = field(default_factory=list)
     condition: str = "success"  # "success" | "contains:keyword"
+    timeout: int = 300      # seconds per node (default 5 min)
+    retries: int = 0        # max retry attempts (0 = no retries)
 
 
 @dataclass
@@ -37,6 +43,7 @@ class Workflow:
     name: str
     description: str
     nodes: list[WorkflowNode]
+    timeout: int = 0         # workflow-level timeout in seconds (0 = no limit)
 
     @staticmethod
     def load(path: Path) -> "Workflow":
@@ -55,6 +62,7 @@ class Workflow:
 
         name = raw.get("name", path.stem)
         description = raw.get("description", "")
+        workflow_timeout = raw.get("timeout", 0)
         nodes_raw = raw.get("nodes")
 
         if not nodes_raw:
@@ -70,9 +78,12 @@ class Workflow:
                 message=node_data.get("message", ""),
                 depends_on=node_data.get("depends_on", []),
                 condition=node_data.get("condition", "success"),
+                timeout=node_data.get("timeout", 300),
+                retries=node_data.get("retries", 0),
             ))
 
-        return Workflow(name=name, description=description, nodes=nodes)
+        return Workflow(name=name, description=description, nodes=nodes,
+                        timeout=workflow_timeout)
 
 
 @dataclass
@@ -181,7 +192,7 @@ class WorkflowEngine:
 
     def _execute_node(self, node: WorkflowNode, node_results: dict,
                       workflow_name: str, run_id: str) -> tuple[str, dict]:
-        """Execute one node. Returns (node_id, result_dict)."""
+        """Execute one node with timeout and retry support. Returns (node_id, result_dict)."""
         # Check dependencies and conditions
         if node.depends_on:
             if not _check_condition(node.condition, node.depends_on, node_results):
@@ -190,34 +201,63 @@ class WorkflowEngine:
         # Substitute outputs in message
         message = _substitute_outputs(node.message, node_results)
 
-        try:
-            worker_name = node.worker
-            if worker_name == "auto":
-                hr = HR(self.config, self.config.project_dir)
-                task_router = TaskRouter(self.config, hr)
-                selected = task_router.select_worker(message)
-                if selected is None:
-                    return (node.id, {"status": "failed", "output": "",
-                                      "error": "No workers available for auto-routing"})
-                worker_name = selected
-            worker = Worker(worker_name, self.config.project_dir, self.config)
-            response, _ = worker.chat(message, self.router)
-            result = {"status": "completed", "output": response[:2000]}
-            self.event_log.emit(Event(
-                type="workflow.node_completed",
-                source=f"workflow:{workflow_name}",
-                data={"run_id": run_id, "node": node.id, "status": "completed"},
-            ))
-            return (node.id, result)
-        except Exception as e:
-            result = {"status": "failed", "output": "", "error": str(e)}
-            self.event_log.emit(Event(
-                type="workflow.node_completed",
-                source=f"workflow:{workflow_name}",
-                data={"run_id": run_id, "node": node.id, "status": "failed",
-                      "error": str(e)},
-            ))
-            return (node.id, result)
+        max_attempts = 1 + node.retries
+        last_error = None
+
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                logger.warning("Retry %d/%d for node %s in workflow %s",
+                               attempt, node.retries, node.id, workflow_name)
+
+            try:
+                result = self._run_node_with_timeout(node, message, node.timeout)
+                self.event_log.emit(Event(
+                    type="workflow.node_completed",
+                    source=f"workflow:{workflow_name}",
+                    data={"run_id": run_id, "node": node.id, "status": "completed"},
+                ))
+                return (node.id, result)
+            except Exception as e:
+                last_error = e
+                if attempt < max_attempts - 1:
+                    continue  # retry
+                break
+
+        # All attempts exhausted
+        error_msg = str(last_error)
+        logger.warning("Node failed: workflow=%s, node=%s, error=%s",
+                       workflow_name, node.id, error_msg)
+        result = {"status": "failed", "output": "", "error": error_msg}
+        self.event_log.emit(Event(
+            type="workflow.node_completed",
+            source=f"workflow:{workflow_name}",
+            data={"run_id": run_id, "node": node.id, "status": "failed",
+                  "error": error_msg},
+        ))
+        return (node.id, result)
+
+    def _run_node_with_timeout(self, node: WorkflowNode, message: str,
+                               timeout: int) -> dict:
+        """Run a single node attempt with timeout. Returns result dict or raises."""
+        worker_name = node.worker
+        if worker_name == "auto":
+            hr = HR(self.config, self.config.project_dir)
+            task_router = TaskRouter(self.config, hr)
+            selected = task_router.select_worker(message)
+            if selected is None:
+                raise RuntimeError("No workers available for auto-routing")
+            worker_name = selected
+
+        worker = Worker(worker_name, self.config.project_dir, self.config)
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(worker.chat, message, self.router)
+            try:
+                response, _ = future.result(timeout=timeout)
+            except FuturesTimeoutError:
+                raise TimeoutError(f"Node '{node.id}' timed out after {timeout}s")
+
+        return {"status": "completed", "output": response[:2000]}
 
     def run(self, workflow: Workflow, max_workers: int = 4) -> WorkflowRun:
         """Execute a workflow with parallel fan-out. Returns the completed WorkflowRun."""
@@ -230,6 +270,9 @@ class WorkflowEngine:
             status="running",
             started_at=datetime.now(timezone.utc).isoformat(),
         )
+
+        logger.info("Workflow started: name=%s, run=%s, nodes=%d",
+                    workflow.name, run.id, len(sorted_nodes))
 
         self.event_log.emit(Event(
             type="workflow.started",
@@ -244,8 +287,27 @@ class WorkflowEngine:
 
         has_failures = False
         result_lock = threading.Lock()
+        start_time = time.monotonic()
 
         for depth in sorted(by_depth):
+            # Check workflow-level timeout before each depth layer
+            if workflow.timeout > 0:
+                elapsed = time.monotonic() - start_time
+                if elapsed >= workflow.timeout:
+                    # Mark remaining nodes as failed
+                    for remaining_depth in sorted(by_depth):
+                        if remaining_depth < depth:
+                            continue
+                        for node in by_depth[remaining_depth]:
+                            if node.id not in run.node_results:
+                                run.node_results[node.id] = {
+                                    "status": "failed",
+                                    "output": "",
+                                    "error": "Workflow timeout exceeded",
+                                }
+                    has_failures = True
+                    break
+
             nodes_at_depth = by_depth[depth]
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = {
@@ -275,6 +337,8 @@ class WorkflowEngine:
                 "started_at": run.started_at,
                 "completed_at": run.completed_at,
             })
+
+        logger.info("Workflow %s: name=%s, run=%s", run.status, workflow.name, run.id)
 
         event_type = "workflow.completed" if run.status == "completed" else "workflow.failed"
         self.event_log.emit(Event(

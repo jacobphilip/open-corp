@@ -1,6 +1,9 @@
 """Tests for framework/workflow.py — DAG workflow engine."""
 
 import json
+import logging
+import time
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -343,3 +346,192 @@ class TestParallelExecution:
 
         assert run.status == "completed"
         assert len(run.node_results) == 2
+
+
+class TestWorkflowNodeTimeoutRetries:
+    def test_node_timeout_default(self):
+        """Default timeout is 300."""
+        node = WorkflowNode(id="a", worker="w", message="hi")
+        assert node.timeout == 300
+
+    def test_node_timeout_from_yaml(self, tmp_path):
+        """Parsed from YAML."""
+        wf_path = tmp_path / "wf.yaml"
+        wf_path.write_text(yaml.dump({
+            "name": "timeout-test",
+            "nodes": {"step1": {"worker": "w", "message": "hi", "timeout": 120}},
+        }))
+        wf = Workflow.load(wf_path)
+        assert wf.nodes[0].timeout == 120
+
+    def test_node_retries_default(self):
+        """Default retries is 0."""
+        node = WorkflowNode(id="a", worker="w", message="hi")
+        assert node.retries == 0
+
+    def test_node_retries_from_yaml(self, tmp_path):
+        """Parsed from YAML."""
+        wf_path = tmp_path / "wf.yaml"
+        wf_path.write_text(yaml.dump({
+            "name": "retry-test",
+            "nodes": {"step1": {"worker": "w", "message": "hi", "retries": 3}},
+        }))
+        wf = Workflow.load(wf_path)
+        assert wf.nodes[0].retries == 3
+
+    def test_workflow_timeout_default(self):
+        """Default workflow timeout is 0 (unlimited)."""
+        wf = Workflow(name="test", description="", nodes=[])
+        assert wf.timeout == 0
+
+    def test_workflow_timeout_from_yaml(self, tmp_path):
+        """Parsed from YAML."""
+        wf_path = tmp_path / "wf.yaml"
+        wf_path.write_text(yaml.dump({
+            "name": "wf-timeout",
+            "timeout": 600,
+            "nodes": {"step1": {"worker": "w", "message": "hi"}},
+        }))
+        wf = Workflow.load(wf_path)
+        assert wf.timeout == 600
+
+    def test_node_timeout_triggers(self, workflow_env):
+        """Slow worker times out → failed."""
+        engine, event_log, tmp_project = workflow_env
+
+        def slow_chat(*args, **kwargs):
+            time.sleep(5)
+            return ("result", [])
+
+        wf = Workflow(name="timeout", description="test", nodes=[
+            WorkflowNode(id="a", worker="researcher", message="slow",
+                         timeout=1, retries=0),
+        ])
+
+        with patch("framework.worker.Worker.chat", side_effect=slow_chat):
+            run = engine.run(wf)
+
+        assert run.status == "failed"
+        assert run.node_results["a"]["status"] == "failed"
+        assert "timed out" in run.node_results["a"]["error"]
+
+    def test_node_retry_success(self, workflow_env):
+        """First attempt fails, second succeeds."""
+        engine, event_log, tmp_project = workflow_env
+        call_count = [0]
+
+        wf = Workflow(name="retry-ok", description="test", nodes=[
+            WorkflowNode(id="a", worker="researcher", message="retry me",
+                         timeout=300, retries=1),
+        ])
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(side_effect=[
+                httpx.Response(500, json={"error": "temporary"}),
+                _mock_response("success"),
+            ])
+            run = engine.run(wf)
+
+        assert run.status == "completed"
+        assert run.node_results["a"]["status"] == "completed"
+
+    def test_node_retry_exhausted(self, workflow_env):
+        """All retries fail → final result failed."""
+        engine, event_log, tmp_project = workflow_env
+
+        wf = Workflow(name="retry-fail", description="test", nodes=[
+            WorkflowNode(id="a", worker="researcher", message="keep failing",
+                         timeout=300, retries=2),
+        ])
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                return_value=httpx.Response(500, json={"error": "persistent"})
+            )
+            run = engine.run(wf)
+
+        assert run.status == "failed"
+        assert run.node_results["a"]["status"] == "failed"
+
+    def test_workflow_timeout_marks_remaining(self, workflow_env):
+        """Remaining nodes marked failed on workflow timeout."""
+        engine, event_log, tmp_project = workflow_env
+
+        def slow_chat(*args, **kwargs):
+            time.sleep(2)
+            return ("result", [])
+
+        # A→B chain, workflow timeout of 1s. A will take 2s, so B never starts.
+        wf = Workflow(name="wf-timeout", description="test", timeout=1, nodes=[
+            WorkflowNode(id="a", worker="researcher", message="slow", timeout=10),
+            WorkflowNode(id="b", worker="writer", message="wait",
+                         depends_on=["a"], timeout=10),
+        ])
+
+        with patch("framework.worker.Worker.chat", side_effect=slow_chat):
+            run = engine.run(wf)
+
+        assert run.status == "failed"
+        # B should be failed with timeout message
+        assert run.node_results["b"]["status"] == "failed"
+        assert "timeout" in run.node_results["b"]["error"].lower()
+
+    def test_workflow_timeout_zero_unlimited(self, workflow_env):
+        """timeout=0 does not limit."""
+        engine, event_log, tmp_project = workflow_env
+
+        wf = Workflow(name="unlimited", description="test", timeout=0, nodes=[
+            WorkflowNode(id="a", worker="researcher", message="go"),
+        ])
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(return_value=_mock_response("done"))
+            run = engine.run(wf)
+
+        assert run.status == "completed"
+
+    def test_node_timeout_unblocks_layer(self, workflow_env):
+        """Timed-out node doesn't block depth layer."""
+        engine, event_log, tmp_project = workflow_env
+
+        def slow_chat(*args, **kwargs):
+            time.sleep(5)
+            return ("result", [])
+
+        # Two nodes at same depth: a (slow, 1s timeout) and b (fast)
+        wf = Workflow(name="unblock", description="test", nodes=[
+            WorkflowNode(id="a", worker="researcher", message="slow", timeout=1),
+            WorkflowNode(id="b", worker="writer", message="fast", timeout=300),
+        ])
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(return_value=_mock_response("done"))
+            with patch("framework.worker.Worker.chat") as mock_chat:
+                def side_effect(msg, router, **kwargs):
+                    if "slow" in msg:
+                        time.sleep(5)
+                    return ("done", [])
+                mock_chat.side_effect = side_effect
+                run = engine.run(wf)
+
+        assert run.node_results["a"]["status"] == "failed"
+        assert run.node_results["b"]["status"] == "completed"
+
+    def test_retry_logs_attempts(self, workflow_env, caplog):
+        """Logger captures retry warnings."""
+        engine, event_log, tmp_project = workflow_env
+
+        wf = Workflow(name="retry-log", description="test", nodes=[
+            WorkflowNode(id="a", worker="researcher", message="retry",
+                         timeout=300, retries=1),
+        ])
+
+        with caplog.at_level(logging.DEBUG):
+            with respx.mock:
+                respx.post(OPENROUTER_API_URL).mock(side_effect=[
+                    httpx.Response(500, json={"error": "temp"}),
+                    _mock_response("ok"),
+                ])
+                engine.run(wf)
+
+        assert any("retry" in r.message.lower() for r in caplog.records)

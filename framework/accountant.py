@@ -9,6 +9,9 @@ from tinydb import Query
 from framework.config import ProjectConfig
 from framework.db import get_db
 from framework.exceptions import BudgetExceeded
+from framework.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class BudgetStatus(Enum):
@@ -65,7 +68,12 @@ class Accountant:
 
         if status == BudgetStatus.FROZEN:
             remaining = max(0.0, self.budget.daily_limit - self.today_spent())
+            logger.warning("Budget frozen: spent=%.4f, limit=%.2f",
+                           self.today_spent(), self.budget.daily_limit)
             raise BudgetExceeded(remaining, self.budget.daily_limit)
+
+        if status != BudgetStatus.GREEN:
+            logger.info("Budget status: %s (%.0f%% used)", status.value, ratio * 100)
 
         return status
 

@@ -209,6 +209,110 @@ class TestDemoteAndReview:
         assert len(actions) == 0
 
 
+class TestFireWithCleanup:
+    def test_fire_removes_scheduled_tasks(self, tmp_project, config):
+        """Tasks for fired worker removed."""
+        from framework.accountant import Accountant
+        from framework.events import EventLog
+        from framework.router import Router
+        from framework.scheduler import Scheduler, ScheduledTask
+
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("target", role="temp")
+        hr.hire_from_scratch("keeper", role="perm")
+
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+        event_log = EventLog(tmp_project / "data" / "events.json")
+        scheduler = Scheduler(config, accountant, router, event_log)
+
+        scheduler.add_task(ScheduledTask(
+            worker_name="target", message="doomed",
+            schedule_type="once", schedule_value="2026-12-31T00:00:00",
+        ))
+        scheduler.add_task(ScheduledTask(
+            worker_name="keeper", message="safe",
+            schedule_type="once", schedule_value="2026-12-31T00:00:00",
+        ))
+
+        result = hr.fire("target", confirm=True, scheduler=scheduler)
+        assert result["removed_tasks"] == 1
+        # keeper's task still exists
+        tasks = scheduler.list_tasks()
+        assert len(tasks) == 1
+        assert tasks[0]["worker_name"] == "keeper"
+
+    def test_fire_keeps_other_worker_tasks(self, tmp_project, config):
+        """Other workers' tasks untouched."""
+        from framework.accountant import Accountant
+        from framework.events import EventLog
+        from framework.router import Router
+        from framework.scheduler import Scheduler, ScheduledTask
+
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("alice", role="temp")
+        hr.hire_from_scratch("bob", role="perm")
+
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+        event_log = EventLog(tmp_project / "data" / "events.json")
+        scheduler = Scheduler(config, accountant, router, event_log)
+
+        scheduler.add_task(ScheduledTask(
+            worker_name="bob", message="safe",
+            schedule_type="once", schedule_value="2026-12-31T00:00:00",
+        ))
+
+        hr.fire("alice", confirm=True, scheduler=scheduler)
+        assert len(scheduler.list_tasks()) == 1
+
+    def test_fire_warns_about_workflows(self, tmp_project, config):
+        """Warnings include workflow file references."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("wf_worker", role="temp")
+
+        wf_dir = tmp_project / "workflows"
+        wf_dir.mkdir(exist_ok=True)
+        (wf_dir / "pipeline.yaml").write_text(yaml.dump({
+            "name": "test",
+            "nodes": {"step1": {"worker": "wf_worker", "message": "go"}},
+        }))
+
+        result = hr.fire("wf_worker", confirm=True)
+        assert len(result["warnings"]) == 1
+        assert "pipeline.yaml" in result["warnings"][0]
+
+    def test_fire_no_scheduler(self, tmp_project, config):
+        """Works without scheduler (backward compat)."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("solo", role="temp")
+        result = hr.fire("solo", confirm=True)
+        assert result["removed_tasks"] == 0
+        assert isinstance(result["warnings"], list)
+
+    def test_fire_returns_result_dict(self, tmp_project, config):
+        """Return is dict with expected keys."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("dictcheck", role="temp")
+        result = hr.fire("dictcheck", confirm=True)
+        assert isinstance(result, dict)
+        assert "removed_tasks" in result
+        assert "warnings" in result
+
+    def test_fire_nonexistent_worker_with_cleanup(self, tmp_project, config):
+        """WorkerNotFound raised."""
+        hr = HR(config, tmp_project)
+        with pytest.raises(WorkerNotFound, match="ghost"):
+            hr.fire("ghost", confirm=True)
+
+    def test_fire_requires_confirm_with_cleanup(self, tmp_project, config):
+        """ValueError without confirm=True."""
+        hr = HR(config, tmp_project)
+        hr.hire_from_scratch("noconfirm", role="temp")
+        with pytest.raises(ValueError, match="confirm=True"):
+            hr.fire("noconfirm")
+
+
 class TestTrainFromDocument:
     def test_train_from_text_file(self, tmp_project, config):
         """Trains from a .txt file, creates knowledge entries."""

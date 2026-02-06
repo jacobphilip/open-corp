@@ -12,6 +12,7 @@ import yaml
 from framework.accountant import Accountant
 from framework.config import ProjectConfig
 from framework.events import EventLog
+from framework.log import setup_logging
 from framework.exceptions import (
     BrokerError, BudgetExceeded, ConfigError, MarketplaceError, ModelUnavailable,
     RegistryError, SchedulerError, TrainingError, WebhookError, WorkerNotFound,
@@ -48,11 +49,14 @@ def _load_project(project_dir: Path | None = None) -> tuple[ProjectConfig, Accou
 @click.group()
 @click.option("--project-dir", type=click.Path(exists=True, path_type=Path), default=None,
               help="Project directory (defaults to cwd)")
+@click.option("--verbose", "-v", is_flag=True, help="Enable debug logging")
 @click.pass_context
-def cli(ctx, project_dir):
+def cli(ctx, project_dir, verbose):
     """open-corp — AI-powered operations with specialist workers."""
     ctx.ensure_object(dict)
     ctx.obj["project_dir"] = project_dir
+    ctx.obj["verbose"] = verbose
+    setup_logging(level="DEBUG" if verbose else "INFO")
 
 
 @cli.command()
@@ -1303,6 +1307,115 @@ def broker_trades(ctx, symbol, limit):
 
     for t in trades:
         click.echo(f"  [{t['timestamp'][:19]}] {t['side'].upper()} {t['quantity']} {t['symbol']} @ ${t['price']:.2f}")
+
+
+@cli.command()
+@click.argument("worker_name")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def fire(ctx, worker_name, yes):
+    """Fire a worker and clean up references."""
+    try:
+        config, accountant, router, hr = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    if not yes:
+        if not click.confirm(f"Fire '{worker_name}'? This deletes all worker data"):
+            click.echo("Aborted.")
+            return
+
+    event_log = EventLog(config.project_dir / "data" / "events.json")
+    scheduler = Scheduler(config, accountant, router, event_log)
+
+    try:
+        result = hr.fire(worker_name, confirm=True, scheduler=scheduler)
+    except WorkerNotFound:
+        click.echo(f"Worker '{worker_name}' not found.", err=True)
+        sys.exit(1)
+
+    click.echo(f"Fired '{worker_name}'.")
+    if result["removed_tasks"] > 0:
+        click.echo(f"  Removed {result['removed_tasks']} scheduled task(s).")
+    for warning in result["warnings"]:
+        click.echo(f"  Warning: {warning}")
+
+
+@cli.command()
+@click.option("--dry-run", is_flag=True, help="Show what would be removed")
+@click.pass_context
+def housekeep(ctx, dry_run):
+    """Clean up old data based on retention policies."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.housekeeping import Housekeeper
+    hk = Housekeeper(config.project_dir, config.retention)
+
+    if dry_run:
+        click.echo("Dry run — retention policies:")
+        click.echo(f"  Events:      keep {config.retention.events_days} days")
+        click.echo(f"  Spending:    keep {config.retention.spending_days} days")
+        click.echo(f"  Workflows:   keep {config.retention.workflows_days} days")
+        click.echo(f"  Performance: keep {config.retention.performance_max} records per worker")
+        return
+
+    results = hk.run_all()
+    total = sum(results.values())
+    click.echo(f"Housekeeping complete: {total} records removed")
+    for store, count in results.items():
+        if count > 0:
+            click.echo(f"  {store}: {count} removed")
+
+
+@cli.command()
+@click.pass_context
+def validate(ctx):
+    """Validate project configuration and references."""
+    try:
+        config, accountant, router, hr = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    errors = []
+    warnings = []
+
+    # Check workers referenced in scheduled tasks
+    event_log = EventLog(config.project_dir / "data" / "events.json")
+    scheduler = Scheduler(config, accountant, router, event_log)
+    for task in scheduler.list_tasks():
+        worker_name = task.get("worker_name", "")
+        worker_dir = config.project_dir / "workers" / worker_name
+        if not worker_dir.exists():
+            errors.append(f"Scheduled task '{task.get('id', '?')}' references missing worker '{worker_name}'")
+
+    # Check workflow YAML files parse correctly
+    workflows_dir = config.project_dir / "workflows"
+    if workflows_dir.exists():
+        for wf_file in sorted(workflows_dir.glob("*.yaml")):
+            try:
+                Workflow.load(wf_file)
+            except WorkflowError as e:
+                errors.append(f"Workflow '{wf_file.name}': {e}")
+
+    if errors:
+        click.echo("Errors:")
+        for e in errors:
+            click.echo(f"  {e}")
+    if warnings:
+        click.echo("Warnings:")
+        for w in warnings:
+            click.echo(f"  {w}")
+    if not errors and not warnings:
+        click.echo("Validation passed. No issues found.")
+
+    if errors:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

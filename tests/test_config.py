@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from framework.config import ProjectConfig
+from framework.config import LoggingConfig, ProjectConfig, RetentionConfig
 from framework.exceptions import ConfigError
 
 
@@ -112,3 +112,70 @@ class TestProjectConfig:
         (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
         config = ProjectConfig.load(tmp_path)
         assert config.marketplace_url == "https://example.com/registry.yaml"
+
+    def test_logging_config_defaults(self, tmp_path):
+        """LoggingConfig defaults when section missing."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.logging.level == "INFO"
+        assert config.logging.file == ""
+
+    def test_logging_config_from_charter(self, tmp_path):
+        """LoggingConfig parsed from charter.yaml logging section."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+            "logging": {"level": "DEBUG", "file": "data/app.log"},
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.logging.level == "DEBUG"
+        assert config.logging.file == "data/app.log"
+
+    def test_retention_config_defaults(self, tmp_path):
+        """RetentionConfig defaults when section missing."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.retention.events_days == 90
+        assert config.retention.spending_days == 90
+        assert config.retention.workflows_days == 90
+        assert config.retention.performance_max == 100
+
+    def test_retention_config_from_charter(self, tmp_path):
+        """RetentionConfig parsed from charter.yaml retention section."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+            "retention": {
+                "events_days": 30,
+                "spending_days": 60,
+                "workflows_days": 14,
+                "performance_max": 50,
+            },
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.retention.events_days == 30
+        assert config.retention.spending_days == 60
+        assert config.retention.workflows_days == 14
+        assert config.retention.performance_max == 50
+
+    def test_logging_config_dataclass_defaults(self):
+        """LoggingConfig() has correct defaults."""
+        lc = LoggingConfig()
+        assert lc.level == "INFO"
+        assert lc.file == ""
+
+    def test_retention_config_dataclass_defaults(self):
+        """RetentionConfig() has correct defaults."""
+        rc = RetentionConfig()
+        assert rc.events_days == 90
+        assert rc.performance_max == 100

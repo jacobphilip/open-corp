@@ -33,6 +33,8 @@ nodes:
 | `message` | No | Task message (supports output substitution) |
 | `depends_on` | No | List of node IDs that must complete first |
 | `condition` | No | `"success"` (default) or `"contains:keyword"` |
+| `timeout` | No | Max seconds for this node (default: 300) |
+| `retries` | No | Max retry attempts on failure (default: 0) |
 
 ## Output Substitution
 
@@ -76,6 +78,54 @@ alert:
   depends_on: [analysis]
   condition: "contains:anomaly"
 ```
+
+## Timeouts
+
+### Per-Node Timeout
+
+Each node has a timeout (default 300 seconds). If the worker takes longer, the node is marked failed:
+
+```yaml
+nodes:
+  research:
+    worker: alice
+    message: "Deep analysis of market trends"
+    timeout: 600    # 10 minutes for this node
+```
+
+### Workflow-Level Timeout
+
+Set a total time limit for the entire workflow. When exceeded, remaining nodes are marked failed:
+
+```yaml
+name: time-bounded-pipeline
+description: Must complete within 15 minutes
+timeout: 900    # 0 = unlimited (default)
+
+nodes:
+  step1:
+    worker: alice
+    message: "First task"
+  step2:
+    worker: bob
+    message: "Second task: {step1.output}"
+    depends_on: [step1]
+```
+
+## Retries
+
+Nodes can automatically retry on failure:
+
+```yaml
+nodes:
+  flaky_api:
+    worker: alice
+    message: "Fetch data from external API"
+    retries: 2      # Try up to 3 times total (1 initial + 2 retries)
+    timeout: 120
+```
+
+If all retry attempts fail, the node is marked failed and downstream nodes are skipped (unless their condition allows it).
 
 ## Parallel Execution
 

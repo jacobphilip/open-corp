@@ -46,6 +46,20 @@ class PromotionRules:
 
 
 @dataclass
+class LoggingConfig:
+    level: str = "INFO"
+    file: str = ""  # empty = stderr only
+
+
+@dataclass
+class RetentionConfig:
+    events_days: int = 90
+    spending_days: int = 90
+    workflows_days: int = 90
+    performance_max: int = 100
+
+
+@dataclass
 class GitConfig:
     auto_commit: bool = True
     auto_push: bool = True
@@ -64,6 +78,8 @@ class ProjectConfig:
     git: GitConfig = field(default_factory=GitConfig)
     worker_defaults: WorkerDefaults = field(default_factory=WorkerDefaults)
     promotion_rules: PromotionRules = field(default_factory=PromotionRules)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+    retention: RetentionConfig = field(default_factory=RetentionConfig)
     marketplace_url: str = ""
     board_enabled: bool = False
 
@@ -170,6 +186,22 @@ class ProjectConfig:
             review_window=pr_raw.get("review_window", 20),
         )
 
+        # Logging config
+        log_raw = raw.get("logging", {})
+        logging_config = LoggingConfig(
+            level=log_raw.get("level", "INFO"),
+            file=log_raw.get("file", ""),
+        )
+
+        # Retention config
+        ret_raw = raw.get("retention", {})
+        retention = RetentionConfig(
+            events_days=ret_raw.get("events_days", 90),
+            spending_days=ret_raw.get("spending_days", 90),
+            workflows_days=ret_raw.get("workflows_days", 90),
+            performance_max=ret_raw.get("performance_max", 100),
+        )
+
         # Marketplace
         marketplace_url = raw.get("marketplace", {}).get("registry_url", "")
 
@@ -186,6 +218,8 @@ class ProjectConfig:
             git=git,
             worker_defaults=worker_defaults,
             promotion_rules=promotion_rules,
+            logging=logging_config,
+            retention=retention,
             marketplace_url=marketplace_url,
             board_enabled=board_enabled,
         )

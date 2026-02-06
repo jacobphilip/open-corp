@@ -1,6 +1,6 @@
 # Test Plan — open-corp
 
-Version: **1.0.0** | Total tests: **321** | Status: **All passing**
+Version: **1.1.0** | Total tests: **388** | Status: **All passing**
 
 ---
 
@@ -14,7 +14,7 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 
 ---
 
-## test_config.py — 10 tests
+## test_config.py — 17 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -28,6 +28,13 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 | 8 | test_max_history_messages_from_charter | max_history_messages parsed from charter.yaml |
 | 9 | test_promotion_rules_from_charter | PromotionRules parsed from charter.yaml |
 | 10 | test_marketplace_url_from_charter | marketplace.registry_url parsed from charter.yaml |
+| 11 | test_logging_config_defaults | LoggingConfig() default values (INFO, empty file) |
+| 12 | test_logging_config_from_charter | Logging section parsed from charter.yaml |
+| 13 | test_retention_config_defaults | RetentionConfig() defaults (90 days, 100 perf max) |
+| 14 | test_retention_config_from_charter | Retention section parsed from charter.yaml |
+| 15 | test_logging_config_dataclass_defaults | LoggingConfig default field values |
+| 16 | test_retention_config_dataclass_defaults | RetentionConfig default field values |
+| 17 | test_logging_config_custom_values | LoggingConfig with custom level and file |
 
 ---
 
@@ -166,7 +173,7 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 
 ---
 
-## test_hr.py — 29 tests
+## test_hr.py — 36 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -199,10 +206,17 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 | 27 | test_train_from_youtube_playlist | Playlist extracts video IDs, processes each |
 | 28 | test_train_from_youtube_playlist_max_cap | Playlist caps at max_videos |
 | 29 | test_train_from_youtube_raises_training_error | YouTube failure raises TrainingError |
+| 30 | test_fire_removes_scheduled_tasks | Tasks for fired worker removed from scheduler |
+| 31 | test_fire_keeps_other_worker_tasks | Other workers' tasks untouched |
+| 32 | test_fire_warns_about_workflows | Warnings include workflow file references |
+| 33 | test_fire_no_scheduler | Works without scheduler (backward compat) |
+| 34 | test_fire_returns_result_dict | Return is dict with expected keys |
+| 35 | test_fire_nonexistent_worker_cleanup | WorkerNotFound raised with cleanup args |
+| 36 | test_fire_requires_confirm_cleanup | ValueError without confirm=True |
 
 ---
 
-## test_cli.py — 54 tests
+## test_cli.py — 65 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -260,6 +274,17 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 | 52 | test_webhook_start_missing_key | exit 1 without WEBHOOK_API_KEY |
 | 53 | test_broker_account | Shows cash, equity, P&L |
 | 54 | test_broker_buy_sell | Paper trade round trip |
+| 55 | test_fire_command_success | Worker removed, success message |
+| 56 | test_fire_command_with_yes | -y skips confirmation prompt |
+| 57 | test_fire_command_nonexistent | Error message, exit code 1 |
+| 58 | test_fire_command_shows_task_count | Shows removed tasks count |
+| 59 | test_fire_command_shows_warnings | Shows workflow warnings |
+| 60 | test_fire_command_aborted | User declines, worker still exists |
+| 61 | test_fire_command_no_workers | Error when worker not found |
+| 62 | test_cli_verbose_flag | --verbose sets DEBUG level |
+| 63 | test_cli_validate_success | Valid project passes validation |
+| 64 | test_cli_validate_missing_charter | Missing charter shows error |
+| 65 | test_cli_validate_checks_workers | Orphaned task references flagged |
 
 ---
 
@@ -303,7 +328,7 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 
 ---
 
-## test_workflow.py — 21 tests
+## test_workflow.py — 34 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -328,6 +353,19 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 | 19 | test_parallel_diamond_dag | A→(B,C)→D all complete |
 | 20 | test_parallel_with_failure | Failed node skips downstream |
 | 21 | test_parallel_max_workers | max_workers=1 forces sequential |
+| 22 | test_node_timeout_default | Default timeout is 300 seconds |
+| 23 | test_node_timeout_from_yaml | Timeout parsed from YAML |
+| 24 | test_node_retries_default | Default retries is 0 |
+| 25 | test_node_retries_from_yaml | Retries parsed from YAML |
+| 26 | test_workflow_timeout_default | Default workflow timeout is 0 (unlimited) |
+| 27 | test_workflow_timeout_from_yaml | Workflow timeout parsed from YAML |
+| 28 | test_node_timeout_triggers | Slow worker times out → node failed with error |
+| 29 | test_node_retry_success | First attempt fails, second succeeds |
+| 30 | test_node_retry_exhausted | All retries fail → final result failed |
+| 31 | test_workflow_timeout_marks_remaining | Remaining nodes marked failed on workflow timeout |
+| 32 | test_workflow_timeout_zero_unlimited | timeout=0 does not limit execution |
+| 33 | test_node_timeout_unblocks_layer | Timed-out node doesn't block depth layer |
+| 34 | test_retry_logs_attempts | Logger captures retry warning messages |
 
 ---
 
@@ -350,7 +388,7 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 
 ---
 
-## test_webhooks.py — 14 tests (NEW in v0.5)
+## test_webhooks.py — 22 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -368,6 +406,14 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 | 12 | test_trigger_task_with_run_at | Scheduled task with future timestamp |
 | 13 | test_emit_event_success | Event persisted to event log |
 | 14 | test_emit_event_missing_type | 400 for missing type |
+| 15 | test_webhook_schedule_immediate | No run_at uses valid ISO timestamp |
+| 16 | test_webhook_schedule_with_run_at | Provided run_at is used as schedule_value |
+| 17 | test_webhook_schedule_value_is_iso | Schedule value is valid ISO format |
+| 18 | test_webhook_path_traversal_absolute | Absolute path outside project → 400 |
+| 19 | test_webhook_path_traversal_relative | Relative `../../etc/passwd` → 400 |
+| 20 | test_webhook_path_within_project_relative | Relative path within project works |
+| 21 | test_webhook_path_within_project_absolute | Absolute path within project works |
+| 22 | test_webhook_path_traversal_dot_dot | Nested `../` traversal → 400 |
 
 ---
 
@@ -468,7 +514,43 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 
 ---
 
-## Coverage Gaps (known, acceptable for v1.0)
+## test_logging.py — 8 tests (NEW in v1.1)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_setup_logging_default | Returns logger with INFO level |
+| 2 | test_setup_logging_debug_level | DEBUG level works |
+| 3 | test_setup_logging_with_file | Creates log file on disk |
+| 4 | test_setup_logging_idempotent | No duplicate handlers on repeat calls |
+| 5 | test_get_logger_naming | Returns open-corp.{module} logger |
+| 6 | test_router_logs_fallback | caplog captures router tier fallback |
+| 7 | test_accountant_logs_warning | caplog captures budget warning |
+| 8 | test_workflow_logs_lifecycle | caplog captures workflow start/complete |
+
+---
+
+## test_housekeeping.py — 14 tests (NEW in v1.1)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_clean_events_removes_old | Events older than cutoff removed |
+| 2 | test_clean_events_keeps_recent | Events within window kept |
+| 3 | test_clean_events_empty | No crash on missing DB file |
+| 4 | test_clean_spending_removes_old | Spending records cleaned by date |
+| 5 | test_clean_spending_keeps_recent | Recent spending kept |
+| 6 | test_clean_spending_empty | No crash on missing DB |
+| 7 | test_clean_workflows_removes_old | Old workflow runs removed |
+| 8 | test_clean_workflows_keeps_recent | Recent runs kept |
+| 9 | test_clean_performance_trims | Trims to max, keeps newest |
+| 10 | test_clean_performance_under_limit | No trim when under limit |
+| 11 | test_clean_performance_missing_file | No crash on missing file |
+| 12 | test_run_all_returns_summary | Returns dict with all counts |
+| 13 | test_run_all_logs_total | Logger captures summary message |
+| 14 | test_cli_housekeep | CLI command runs and prints results |
+
+---
+
+## Coverage Gaps (known, acceptable for v1.1)
 
 - **YouTube training pipeline:** No automated tests for actual download/transcribe (requires yt-dlp + whisper)
 - **PDF training:** Uses mocked pypdf in tests (real PDF parsing tested manually)
@@ -479,4 +561,4 @@ Version: **1.0.0** | Total tests: **321** | Status: **All passing**
 
 ---
 
-Total tests: **321** | All passing
+Total tests: **388** | All passing

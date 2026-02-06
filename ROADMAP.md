@@ -1,6 +1,6 @@
 # Roadmap — open-corp
 
-Current version: **1.0.0**
+Current version: **1.1.0**
 
 ---
 
@@ -91,3 +91,19 @@ Status: **Complete**
 - [x] Performance review CLI — `corp review [worker] [--auto]`, `corp delegate <message>`
 - [x] Full MkDocs documentation site — 14 pages with Material theme
 - [x] Tests — 321 tests, all passing
+
+---
+
+## v1.1.0 — Operational Hardening
+
+Status: **Complete**
+
+- [x] Webhook bug fixes — schedule_type always "once", path traversal vulnerability
+- [x] Project validation CLI — `corp validate` checks config, worker refs, workflow YAML
+- [x] Structured logging — `framework/log.py` with `setup_logging()` / `get_logger()`, `--verbose` flag
+- [x] Logging config — `LoggingConfig` and `RetentionConfig` dataclasses in charter.yaml
+- [x] Framework log calls — router, accountant, scheduler, events, webhooks, workflow (~20 targeted calls)
+- [x] Data retention — `Housekeeper` class, `corp housekeep` with `--dry-run`
+- [x] Workflow timeouts — per-node `timeout` (300s default) and `retries` (0 default), workflow-level `timeout`
+- [x] Worker fire with cleanup — scheduler task removal, workflow reference warnings, `corp fire` command
+- [x] Tests — 388 tests, all passing

@@ -10,6 +10,9 @@ import httpx
 from framework.accountant import Accountant, BudgetStatus
 from framework.config import ProjectConfig
 from framework.exceptions import BudgetExceeded, ModelUnavailable
+from framework.log import get_logger
+
+logger = get_logger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
@@ -157,14 +160,19 @@ class Router:
                 tried=[],
             )
 
+        logger.debug("Model selection: tier=%s, budget=%s, candidates=%s",
+                     tier, budget_status.value, models_to_try)
+
         last_error: Exception | None = None
         for candidate in models_to_try:
             try:
                 return self._call_openrouter(candidate, messages, worker_name)
             except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
+                logger.info("Tier fallback: %s failed (%s), trying next", candidate, e)
                 last_error = e
                 continue
 
+        logger.warning("All models exhausted: tried=%s, last_error=%s", models_to_try, last_error)
         raise ModelUnavailable(
             model=model or tier,
             tier=tier,

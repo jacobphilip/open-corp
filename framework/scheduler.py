@@ -12,8 +12,11 @@ from framework.db import get_db
 from framework.config import ProjectConfig
 from framework.events import Event, EventLog
 from framework.exceptions import SchedulerError, WorkerNotFound
+from framework.log import get_logger
 from framework.router import Router
 from framework.worker import Worker
+
+logger = get_logger(__name__)
 
 
 VALID_SCHEDULE_TYPES = ("cron", "interval", "once")
@@ -158,6 +161,8 @@ class Scheduler:
         worker_name = task_doc["worker_name"]
         message = task_doc["message"]
 
+        logger.info("Task execution start: task=%s, worker=%s", task_id, worker_name)
+
         self.event_log.emit(Event(
             type="task.started",
             source=f"scheduler:{task_id}",
@@ -175,6 +180,8 @@ class Scheduler:
             ))
             return response
         except Exception as e:
+            logger.warning("Task execution failed: task=%s, worker=%s, error=%s",
+                           task_id, worker_name, e)
             self.event_log.emit(Event(
                 type="task.failed",
                 source=f"scheduler:{task_id}",

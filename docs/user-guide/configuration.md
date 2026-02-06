@@ -47,6 +47,16 @@ promotion_rules:
 marketplace:
   registry_url: ""            # URL to remote template registry YAML
 
+logging:
+  level: "INFO"               # DEBUG | INFO | WARNING | ERROR
+  file: "data/open-corp.log"  # Relative to project dir; empty = stderr only
+
+retention:
+  events_days: 90             # Days to keep events
+  spending_days: 90           # Days to keep spending records
+  workflows_days: 90          # Days to keep workflow run history
+  performance_max: 100        # Max performance records per worker
+
 git:
   auto_commit: false
   auto_push: false
@@ -85,6 +95,34 @@ model: "deepseek/deepseek-chat"
 | 3     | Mid       | mid        |
 | 4     | Senior    | premium    |
 | 5     | Principal | premium    |
+
+## Logging
+
+Configure logging output level and optional file logging:
+
+```yaml
+logging:
+  level: "INFO"               # DEBUG, INFO, WARNING, or ERROR
+  file: "data/open-corp.log"  # Optional — leave empty for stderr only
+```
+
+Use `--verbose` / `-v` on any CLI command to override level to DEBUG.
+
+Both fields are optional. Defaults: level=INFO, no log file.
+
+## Retention
+
+Control how long data is kept before `corp housekeep` removes it:
+
+```yaml
+retention:
+  events_days: 90        # Remove events older than N days
+  spending_days: 90      # Remove spending records older than N days
+  workflows_days: 90     # Remove workflow runs older than N days
+  performance_max: 100   # Keep only the newest N performance records per worker
+```
+
+All fields are optional with the defaults shown above. Run `corp housekeep --dry-run` to preview what would be removed.
 
 ## Budget Thresholds
 

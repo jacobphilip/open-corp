@@ -8,6 +8,9 @@ from typing import Callable
 from tinydb import Query
 
 from framework.db import get_db
+from framework.log import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -45,14 +48,16 @@ class EventLog:
             try:
                 handler(event)
             except Exception:
-                pass  # broken handler must not break emitter
+                logger.warning("Event handler exception swallowed: event=%s, handler=%s",
+                               event.type, getattr(handler, "__name__", repr(handler)))
 
         # Dispatch to wildcard handlers
         for handler in self._handlers.get("*", []):
             try:
                 handler(event)
             except Exception:
-                pass
+                logger.warning("Event handler exception swallowed: event=%s, handler=%s",
+                               event.type, getattr(handler, "__name__", repr(handler)))
 
     def on(self, event_type: str, handler: Callable) -> None:
         """Register a handler for an event type. Use '*' for all events."""

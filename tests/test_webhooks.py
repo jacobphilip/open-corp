@@ -112,7 +112,7 @@ class TestTriggerWorkflow:
         """400 for missing workflow file."""
         client, _, _, _ = webhook_env
         resp = client.post("/trigger/workflow",
-                          json={"workflow_file": "/nonexistent.yaml"},
+                          json={"workflow_file": "workflows/nonexistent.yaml"},
                           headers=_auth_headers())
         assert resp.status_code == 400
         assert "not found" in resp.get_json()["error"]
@@ -216,3 +216,106 @@ class TestEmitEvent:
                           headers=_auth_headers())
         assert resp.status_code == 400
         assert "missing type" in resp.get_json()["error"]
+
+
+class TestScheduleTypeFix:
+    def test_webhook_schedule_immediate(self, webhook_env):
+        """No run_at uses valid ISO timestamp, not epoch."""
+        client, _, _, scheduler = webhook_env
+        resp = client.post("/trigger/task",
+                          json={"worker": "alice", "message": "now"},
+                          headers=_auth_headers())
+        assert resp.status_code == 200
+        task_id = resp.get_json()["task_id"]
+        task = scheduler.get_task(task_id)
+        assert task is not None
+        assert task["schedule_value"] != "1970-01-01T00:00:00"
+        assert task["schedule_type"] == "once"
+
+    def test_webhook_schedule_with_run_at(self, webhook_env):
+        """Provided run_at is used as schedule_value."""
+        client, _, _, scheduler = webhook_env
+        resp = client.post("/trigger/task",
+                          json={"worker": "alice", "message": "later",
+                                "run_at": "2026-06-15T12:00:00"},
+                          headers=_auth_headers())
+        assert resp.status_code == 200
+        task_id = resp.get_json()["task_id"]
+        task = scheduler.get_task(task_id)
+        assert task["schedule_value"] == "2026-06-15T12:00:00"
+
+    def test_webhook_schedule_value_is_iso(self, webhook_env):
+        """Immediate schedule_value is a valid ISO timestamp."""
+        from datetime import datetime
+        client, _, _, scheduler = webhook_env
+        resp = client.post("/trigger/task",
+                          json={"worker": "alice", "message": "check iso"},
+                          headers=_auth_headers())
+        task_id = resp.get_json()["task_id"]
+        task = scheduler.get_task(task_id)
+        # Should parse without error
+        dt = datetime.fromisoformat(task["schedule_value"])
+        assert dt.year >= 2024
+
+
+class TestPathTraversal:
+    def test_webhook_path_traversal_absolute(self, webhook_env):
+        """/etc/passwd → 400."""
+        client, _, _, _ = webhook_env
+        resp = client.post("/trigger/workflow",
+                          json={"workflow_file": "/etc/passwd"},
+                          headers=_auth_headers())
+        assert resp.status_code == 400
+        assert "within project" in resp.get_json()["error"]
+
+    def test_webhook_path_traversal_relative(self, webhook_env):
+        """../../etc/passwd → 400."""
+        client, _, _, _ = webhook_env
+        resp = client.post("/trigger/workflow",
+                          json={"workflow_file": "../../etc/passwd"},
+                          headers=_auth_headers())
+        assert resp.status_code == 400
+        assert "within project" in resp.get_json()["error"]
+
+    def test_webhook_path_within_project_relative(self, webhook_env):
+        """workflows/test.yaml within project works."""
+        client, _, tmp_project, _ = webhook_env
+        wf_path = tmp_project / "workflows" / "test.yaml"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(yaml.dump({
+            "name": "test-wf",
+            "nodes": {"step1": {"worker": "alice", "message": "hello"}},
+        }))
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(return_value=_mock_response("done"))
+            resp = client.post("/trigger/workflow",
+                              json={"workflow_file": "workflows/test.yaml"},
+                              headers=_auth_headers())
+        assert resp.status_code == 200
+
+    def test_webhook_path_within_project_absolute(self, webhook_env):
+        """Absolute path within project works."""
+        client, _, tmp_project, _ = webhook_env
+        wf_path = tmp_project / "workflows" / "abs.yaml"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(yaml.dump({
+            "name": "abs-wf",
+            "nodes": {"step1": {"worker": "alice", "message": "hello"}},
+        }))
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(return_value=_mock_response("done"))
+            resp = client.post("/trigger/workflow",
+                              json={"workflow_file": str(wf_path)},
+                              headers=_auth_headers())
+        assert resp.status_code == 200
+
+    def test_webhook_path_traversal_dot_dot(self, webhook_env):
+        """Nested ../ traversal → 400."""
+        client, _, _, _ = webhook_env
+        resp = client.post("/trigger/workflow",
+                          json={"workflow_file": "workflows/../../../etc/shadow"},
+                          headers=_auth_headers())
+        assert resp.status_code == 400
+        assert "within project" in resp.get_json()["error"]

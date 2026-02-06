@@ -602,6 +602,142 @@ class TestCLIOps:
         assert "My Project" in reg.list_operations()
 
 
+class TestCLIFire:
+    def test_fire_command_success(self, runner, tmp_project, create_worker):
+        """Worker removed, success message."""
+        create_worker("victim")
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "fire", "victim", "-y"])
+        assert result.exit_code == 0
+        assert "Fired" in result.output
+        assert not (tmp_project / "workers" / "victim").exists()
+
+    def test_fire_command_with_yes(self, runner, tmp_project, create_worker):
+        """-y skips confirmation prompt."""
+        create_worker("quick")
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "fire", "quick", "-y"])
+        assert result.exit_code == 0
+        assert "Fired" in result.output
+
+    def test_fire_command_nonexistent(self, runner, tmp_project):
+        """Error message, exit code 1."""
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "fire", "ghost", "-y"])
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
+    def test_fire_command_shows_task_count(self, runner, tmp_project, create_worker):
+        """Shows removed tasks count."""
+        create_worker("tasked")
+        # Add a scheduled task
+        from framework.config import ProjectConfig
+        from framework.accountant import Accountant
+        from framework.events import EventLog
+        from framework.router import Router
+        from framework.scheduler import Scheduler, ScheduledTask
+        config = ProjectConfig.load(tmp_project)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+        event_log = EventLog(tmp_project / "data" / "events.json")
+        scheduler = Scheduler(config, accountant, router, event_log)
+        scheduler.add_task(ScheduledTask(
+            worker_name="tasked", message="test",
+            schedule_type="once", schedule_value="2026-12-31T00:00:00",
+        ))
+
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "fire", "tasked", "-y"])
+        assert result.exit_code == 0
+        assert "1 scheduled task" in result.output
+
+    def test_fire_command_shows_warnings(self, runner, tmp_project, create_worker):
+        """Shows workflow warnings."""
+        create_worker("wf_ref")
+        wf_dir = tmp_project / "workflows"
+        wf_dir.mkdir(exist_ok=True)
+        (wf_dir / "pipe.yaml").write_text(yaml.dump({
+            "name": "test",
+            "nodes": {"s1": {"worker": "wf_ref", "message": "go"}},
+        }))
+
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "fire", "wf_ref", "-y"])
+        assert result.exit_code == 0
+        assert "Warning:" in result.output
+        assert "pipe.yaml" in result.output
+
+    def test_fire_command_aborted(self, runner, tmp_project, create_worker):
+        """User declines, worker still exists."""
+        create_worker("survivor")
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "fire", "survivor"],
+                              input="n\n")
+        assert result.exit_code == 0
+        assert "Aborted" in result.output
+        assert (tmp_project / "workers" / "survivor").exists()
+
+    def test_fire_command_no_workers(self, runner, tmp_project):
+        """Error when worker not found."""
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "fire", "nobody", "-y"])
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
+
+class TestCLIVerbose:
+    def test_verbose_flag(self, runner, tmp_project):
+        """--verbose sets DEBUG level on the open-corp logger."""
+        import logging
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "-v", "status"])
+        assert result.exit_code == 0
+        logger = logging.getLogger("open-corp")
+        assert logger.level == logging.DEBUG
+        # Reset
+        logger.setLevel(logging.INFO)
+
+
+class TestCLIValidate:
+    def test_validate_success(self, runner, tmp_project):
+        """Valid project passes validation."""
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "validate"])
+        assert result.exit_code == 0
+        assert "No issues found" in result.output
+
+    def test_validate_missing_charter(self, runner, tmp_path):
+        """Missing charter shows error."""
+        result = runner.invoke(cli, ["--project-dir", str(tmp_path), "validate"])
+        assert result.exit_code == 1
+        assert "Config error" in result.output
+
+    def test_validate_checks_workers(self, runner, tmp_project):
+        """Orphaned task references flagged."""
+        # Add a scheduled task referencing a nonexistent worker
+        from framework.config import ProjectConfig
+        from framework.accountant import Accountant
+        from framework.events import EventLog
+        from framework.router import Router
+        from framework.scheduler import Scheduler, ScheduledTask
+        config = ProjectConfig.load(tmp_project)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+        event_log = EventLog(tmp_project / "data" / "events.json")
+        scheduler = Scheduler(config, accountant, router, event_log)
+
+        # Create a worker dir so we can add a task, then delete the worker
+        ghost_dir = tmp_project / "workers" / "ghost"
+        ghost_dir.mkdir(parents=True)
+        (ghost_dir / "config.yaml").write_text("level: 1")
+        (ghost_dir / "profile.md").write_text("# Ghost")
+        (ghost_dir / "skills.yaml").write_text("role: ghost\nskills: [ghost]")
+        scheduler.add_task(ScheduledTask(
+            worker_name="ghost",
+            message="haunt",
+            schedule_type="once",
+            schedule_value="2026-12-31T00:00:00",
+        ))
+        # Now remove the worker
+        import shutil
+        shutil.rmtree(ghost_dir)
+
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "validate"])
+        assert result.exit_code == 1
+        assert "ghost" in result.output
+
+
 class TestCLIBroker:
     def test_broker_account(self, runner, tmp_project):
         """Shows account info."""

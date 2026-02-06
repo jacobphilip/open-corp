@@ -9,7 +9,10 @@ import yaml
 from framework.config import ProjectConfig, PromotionRules
 from framework.exceptions import TrainingError, WorkerNotFound
 from framework.knowledge import KnowledgeBase, KnowledgeEntry, chunk_text, validate_knowledge
+from framework.log import get_logger
 from framework.worker import Worker
+
+logger = get_logger(__name__)
 
 
 class HR:
@@ -114,8 +117,16 @@ class HR:
 
         return workers
 
-    def fire(self, worker_name: str, confirm: bool = False) -> None:
-        """Remove a worker directory. Requires confirm=True."""
+    def fire(self, worker_name: str, confirm: bool = False,
+             scheduler=None) -> dict:
+        """Remove a worker directory and clean up references.
+
+        Args:
+            scheduler: Optional Scheduler instance for task cleanup.
+
+        Returns:
+            {removed_tasks: int, warnings: list[str]}
+        """
         worker_dir = self.workers_dir / worker_name
         if not worker_dir.exists():
             raise WorkerNotFound(worker_name)
@@ -123,7 +134,42 @@ class HR:
             raise ValueError(
                 f"Firing '{worker_name}' requires confirm=True. This deletes all worker data."
             )
+
+        removed_tasks = 0
+        warnings: list[str] = []
+
+        # Clean up scheduled tasks referencing this worker
+        if scheduler is not None:
+            for task in scheduler.list_tasks():
+                if task.get("worker_name") == worker_name:
+                    try:
+                        scheduler.remove_task(task["id"])
+                        removed_tasks += 1
+                    except Exception:
+                        pass
+
+        # Scan workflows for references to this worker
+        workflows_dir = self.project_dir / "workflows"
+        if workflows_dir.exists():
+            for wf_file in sorted(workflows_dir.glob("*.yaml")):
+                try:
+                    raw = yaml.safe_load(wf_file.read_text())
+                    if not isinstance(raw, dict):
+                        continue
+                    for node_id, node_data in (raw.get("nodes") or {}).items():
+                        if isinstance(node_data, dict) and node_data.get("worker") == worker_name:
+                            warnings.append(
+                                f"Workflow '{wf_file.name}' node '{node_id}' references worker '{worker_name}'"
+                            )
+                except Exception:
+                    continue
+
+        logger.info("Firing worker '%s': removed_tasks=%d, warnings=%d",
+                    worker_name, removed_tasks, len(warnings))
+
         shutil.rmtree(worker_dir)
+
+        return {"removed_tasks": removed_tasks, "warnings": warnings}
 
     def demote(self, worker_name: str) -> int:
         """Decrement a worker's seniority level. Returns new level (min 1)."""
