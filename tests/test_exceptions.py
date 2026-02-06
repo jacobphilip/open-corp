@@ -1,11 +1,13 @@
 """Tests for framework/exceptions.py — suggestion field."""
 
 from framework.exceptions import (
+    BrokerError,
     BudgetExceeded,
     ConfigError,
     ModelUnavailable,
     SchedulerError,
     TrainingError,
+    WebhookError,
     WorkerNotFound,
     WorkflowError,
 )
@@ -62,3 +64,25 @@ class TestExceptionSuggestions:
         assert "at node 'step-2'" in str(err2)
         assert "Try: Fix step-2" in str(err2)
         assert err2.node == "step-2"
+
+    def test_broker_error(self):
+        """BrokerError includes reason and optional suggestion."""
+        err = BrokerError("insufficient cash", suggestion="Deposit more funds")
+        assert "insufficient cash" in str(err)
+        assert "Try: Deposit more funds" in str(err)
+        assert err.reason == "insufficient cash"
+
+        err2 = BrokerError("no price data")
+        assert "no price data" in str(err2)
+        assert "Try:" not in str(err2)
+
+    def test_webhook_error(self):
+        """WebhookError includes reason and optional suggestion."""
+        err = WebhookError("auth failed", suggestion="Check WEBHOOK_API_KEY")
+        assert "auth failed" in str(err)
+        assert "Try: Check WEBHOOK_API_KEY" in str(err)
+        assert err.reason == "auth failed"
+
+        err2 = WebhookError("server error")
+        assert "server error" in str(err2)
+        assert "Try:" not in str(err2)

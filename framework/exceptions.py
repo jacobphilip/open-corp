@@ -90,3 +90,27 @@ class WorkflowError(Exception):
         if suggestion:
             msg += f"\n  Try: {suggestion}"
         super().__init__(msg)
+
+
+class BrokerError(Exception):
+    """Raised when a broker operation fails."""
+
+    def __init__(self, reason: str, suggestion: str = ""):
+        self.reason = reason
+        self.suggestion = suggestion
+        msg = f"Broker error: {reason}"
+        if suggestion:
+            msg += f"\n  Try: {suggestion}"
+        super().__init__(msg)
+
+
+class WebhookError(Exception):
+    """Raised when a webhook operation fails."""
+
+    def __init__(self, reason: str, suggestion: str = ""):
+        self.reason = reason
+        self.suggestion = suggestion
+        msg = f"Webhook error: {reason}"
+        if suggestion:
+            msg += f"\n  Try: {suggestion}"
+        super().__init__(msg)
