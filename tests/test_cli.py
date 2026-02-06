@@ -1,5 +1,6 @@
 """Tests for scripts/corp.py CLI."""
 
+import os
 from unittest.mock import patch
 
 import httpx
@@ -360,3 +361,66 @@ class TestCLIChatUpdated:
             )
         assert result.exit_code == 0
         assert "Could not save session summary" in result.output
+
+
+class TestCLIDaemon:
+    def test_daemon_status_not_running(self, runner, tmp_project):
+        """Shows 'not running' when no PID file."""
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "daemon", "status"])
+        assert result.exit_code == 0
+        assert "not running" in result.output
+
+    def test_daemon_stop_not_running(self, runner, tmp_project):
+        """exit 1 when daemon not running."""
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "daemon", "stop"])
+        assert result.exit_code == 1
+        assert "not running" in result.output
+
+    def test_daemon_start_already_running(self, runner, tmp_project):
+        """exit 1 when PID file exists with live process (self)."""
+        pid_path = tmp_project / "data" / "daemon.pid"
+        pid_path.parent.mkdir(parents=True, exist_ok=True)
+        pid_path.write_text(str(os.getpid()))  # current process is alive
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "daemon", "start"])
+        assert result.exit_code == 1
+        assert "already running" in result.output
+
+
+class TestCLIWebhook:
+    def test_webhook_keygen(self, runner):
+        """Outputs a key."""
+        result = runner.invoke(cli, ["webhook", "keygen"])
+        assert result.exit_code == 0
+        assert "WEBHOOK_API_KEY=" in result.output
+        assert "Add this to your .env" in result.output
+
+    def test_webhook_start_missing_key(self, runner, tmp_project):
+        """exit 1 without WEBHOOK_API_KEY."""
+        with patch.dict(os.environ, {"WEBHOOK_API_KEY": ""}, clear=False):
+            result = runner.invoke(cli, ["--project-dir", str(tmp_project), "webhook", "start"])
+        assert result.exit_code == 1
+        assert "WEBHOOK_API_KEY" in result.output
+
+
+class TestCLIBroker:
+    def test_broker_account(self, runner, tmp_project):
+        """Shows account info."""
+        result = runner.invoke(cli, ["--project-dir", str(tmp_project), "broker", "account"])
+        assert result.exit_code == 0
+        assert "Cash:" in result.output
+        assert "Equity:" in result.output
+
+    def test_broker_buy_sell(self, runner, tmp_project):
+        """Paper trade round trip."""
+        result = runner.invoke(
+            cli, ["--project-dir", str(tmp_project), "broker", "buy", "AAPL", "10", "--price", "150"]
+        )
+        assert result.exit_code == 0
+        assert "Bought" in result.output
+        assert "AAPL" in result.output
+
+        result = runner.invoke(
+            cli, ["--project-dir", str(tmp_project), "broker", "sell", "AAPL", "5", "--price", "160"]
+        )
+        assert result.exit_code == 0
+        assert "Sold" in result.output

@@ -2,6 +2,7 @@
 """corp — CLI for managing your open-corp project."""
 
 import json
+import signal
 import sys
 from pathlib import Path
 
@@ -12,8 +13,8 @@ from framework.accountant import Accountant
 from framework.config import ProjectConfig
 from framework.events import EventLog
 from framework.exceptions import (
-    BudgetExceeded, ConfigError, ModelUnavailable, SchedulerError,
-    TrainingError, WorkerNotFound, WorkflowError,
+    BrokerError, BudgetExceeded, ConfigError, ModelUnavailable, SchedulerError,
+    TrainingError, WebhookError, WorkerNotFound, WorkflowError,
 )
 from framework.hr import HR
 from framework.router import Router
@@ -652,16 +653,57 @@ def workflow_status(ctx, run_id):
             click.echo(f"  {node_id}: {result['status']}")
 
 
-# --- Daemon command ---
+# --- Daemon commands ---
 
-@cli.command()
+def _pid_file_path(project_dir: Path) -> Path:
+    """Return the daemon PID file path."""
+    return project_dir / "data" / "daemon.pid"
+
+
+def _read_pid(pid_path: Path) -> int | None:
+    """Read PID from file. Returns None if missing or invalid."""
+    if not pid_path.exists():
+        return None
+    try:
+        return int(pid_path.read_text().strip())
+    except (ValueError, OSError):
+        return None
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Check if a process with the given PID is alive."""
+    import os
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+@cli.group()
+def daemon():
+    """Manage the scheduler daemon."""
+    pass
+
+
+@daemon.command("start")
+@click.option("--background", "-d", is_flag=True, help="Run in background (daemonize)")
 @click.pass_context
-def daemon(ctx):
-    """Start the scheduler daemon (foreground, Ctrl+C to stop)."""
+def daemon_start(ctx, background):
+    """Start the scheduler daemon."""
     try:
         config, accountant, router, _, event_log = _load_project_full(ctx.obj["project_dir"])
     except ConfigError as e:
         click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    project_dir = config.project_dir
+    pid_path = _pid_file_path(project_dir)
+
+    # Check if already running
+    existing_pid = _read_pid(pid_path)
+    if existing_pid and _is_pid_alive(existing_pid):
+        click.echo(f"Daemon already running (PID {existing_pid}).", err=True)
         sys.exit(1)
 
     scheduler = Scheduler(config, accountant, router, event_log)
@@ -672,8 +714,35 @@ def daemon(ctx):
         click.echo("No enabled scheduled tasks. Add tasks with: corp schedule add")
         return
 
+    if background:
+        import os
+        from framework.db import close_all
+        close_all()  # close DB handles before fork
+        child_pid = os.fork()
+        if child_pid > 0:
+            # Parent
+            click.echo(f"Daemon started in background (PID {child_pid}).")
+            return
+        # Child — detach
+        os.setsid()
+        # Re-load components in child process
+        config, accountant, router, _, event_log = _load_project_full(project_dir)
+        scheduler = Scheduler(config, accountant, router, event_log)
+        pid_path.write_text(str(os.getpid()))
+    else:
+        import os
+        pid_path.write_text(str(os.getpid()))
+
     click.echo(f"Starting daemon with {len(enabled)} task(s)...")
     scheduler.start()
+
+    import signal
+    def _shutdown(signum, frame):
+        scheduler.stop()
+        pid_path.unlink(missing_ok=True)
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _shutdown)
 
     try:
         import time
@@ -682,7 +751,53 @@ def daemon(ctx):
     except KeyboardInterrupt:
         click.echo("\nShutting down...")
         scheduler.stop()
+        pid_path.unlink(missing_ok=True)
         click.echo("Daemon stopped.")
+
+
+@daemon.command("stop")
+@click.pass_context
+def daemon_stop(ctx):
+    """Stop the scheduler daemon."""
+    project_dir = ctx.obj["project_dir"] or Path.cwd()
+    pid_path = _pid_file_path(project_dir)
+    pid = _read_pid(pid_path)
+
+    if pid is None or not _is_pid_alive(pid):
+        click.echo("Daemon is not running.", err=True)
+        pid_path.unlink(missing_ok=True)
+        sys.exit(1)
+
+    import os
+    os.kill(pid, signal.SIGTERM)
+    # Wait briefly for shutdown
+    import time
+    for _ in range(10):
+        if not _is_pid_alive(pid):
+            break
+        time.sleep(0.5)
+
+    pid_path.unlink(missing_ok=True)
+    click.echo(f"Daemon stopped (PID {pid}).")
+
+
+@daemon.command("status")
+@click.pass_context
+def daemon_status(ctx):
+    """Check if the daemon is running."""
+    project_dir = ctx.obj["project_dir"] or Path.cwd()
+    pid_path = _pid_file_path(project_dir)
+    pid = _read_pid(pid_path)
+
+    if pid is None:
+        click.echo("Daemon is not running.")
+        return
+
+    if _is_pid_alive(pid):
+        click.echo(f"Daemon is running (PID {pid}).")
+    else:
+        click.echo("Daemon is not running (stale PID file).")
+        pid_path.unlink(missing_ok=True)
 
 
 # --- Events command ---
@@ -710,6 +825,194 @@ def events(ctx, event_type, limit):
             for k, v in e["data"].items():
                 val = str(v)[:100]
                 click.echo(f"    {k}: {val}")
+
+
+# --- Webhook commands ---
+
+@cli.group()
+def webhook():
+    """Manage the webhook server."""
+    pass
+
+
+@webhook.command("start")
+@click.option("--port", default=8080, help="Port to listen on")
+@click.option("--host", default="127.0.0.1", help="Host to bind to")
+@click.pass_context
+def webhook_start(ctx, port, host):
+    """Start the webhook server."""
+    import os
+    api_key = os.getenv("WEBHOOK_API_KEY", "")
+    if not api_key:
+        click.echo("WEBHOOK_API_KEY not set. Run 'corp webhook keygen' and add to .env", err=True)
+        sys.exit(1)
+
+    try:
+        config, accountant, router, _, event_log = _load_project_full(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    scheduler = Scheduler(config, accountant, router, event_log)
+
+    from framework.webhooks import create_webhook_app
+    app = create_webhook_app(config, accountant, router, event_log, scheduler)
+
+    click.echo(f"Starting webhook server on {host}:{port}...")
+    app.run(host=host, port=port)
+
+
+@webhook.command("keygen")
+def webhook_keygen():
+    """Generate a random API key for webhook auth."""
+    import secrets
+    key = secrets.token_urlsafe(32)
+    click.echo(f"WEBHOOK_API_KEY={key}")
+    click.echo("\nAdd this to your .env file.")
+
+
+# --- Broker commands ---
+
+@cli.group()
+def broker():
+    """Paper trading broker."""
+    pass
+
+
+@broker.command("account")
+@click.pass_context
+def broker_account(ctx):
+    """Show account summary."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.broker import Broker
+    b = Broker(config.project_dir / "data" / "broker.json")
+    account = b.get_account()
+
+    click.echo(f"Cash:      ${account['cash']:.2f}")
+    click.echo(f"Positions: ${account['positions_value']:.2f}")
+    click.echo(f"Equity:    ${account['equity']:.2f}")
+    click.echo(f"P&L:       ${account['pnl']:+.2f}")
+
+
+@broker.command("positions")
+@click.pass_context
+def broker_positions(ctx):
+    """Show current positions."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.broker import Broker
+    b = Broker(config.project_dir / "data" / "broker.json")
+    positions = b.get_positions()
+
+    if not positions:
+        click.echo("No positions.")
+        return
+
+    for p in positions:
+        click.echo(f"  {p['symbol']}: {p['quantity']} shares @ ${p['avg_price']:.2f}")
+
+
+@broker.command("buy")
+@click.argument("symbol")
+@click.argument("quantity", type=float)
+@click.option("--price", type=float, default=None, help="Price per share (uses yfinance if omitted)")
+@click.pass_context
+def broker_buy(ctx, symbol, quantity, price):
+    """Paper buy a stock."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.broker import Broker
+    b = Broker(config.project_dir / "data" / "broker.json")
+
+    try:
+        trade = b.place_trade(symbol, "buy", quantity, price=price)
+        click.echo(f"Bought {trade.quantity} {trade.symbol} @ ${trade.price:.2f} = ${trade.total:.2f}")
+    except BrokerError as e:
+        click.echo(f"Broker error: {e}", err=True)
+        sys.exit(1)
+
+
+@broker.command("sell")
+@click.argument("symbol")
+@click.argument("quantity", type=float)
+@click.option("--price", type=float, default=None, help="Price per share (uses yfinance if omitted)")
+@click.pass_context
+def broker_sell(ctx, symbol, quantity, price):
+    """Paper sell a stock."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.broker import Broker
+    b = Broker(config.project_dir / "data" / "broker.json")
+
+    try:
+        trade = b.place_trade(symbol, "sell", quantity, price=price)
+        click.echo(f"Sold {trade.quantity} {trade.symbol} @ ${trade.price:.2f} = ${trade.total:.2f}")
+    except BrokerError as e:
+        click.echo(f"Broker error: {e}", err=True)
+        sys.exit(1)
+
+
+@broker.command("price")
+@click.argument("symbol")
+@click.pass_context
+def broker_price(ctx, symbol):
+    """Get current price for a symbol (requires yfinance)."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.broker import Broker
+    b = Broker(config.project_dir / "data" / "broker.json")
+
+    try:
+        p = b.get_price(symbol)
+        click.echo(f"{symbol.upper()}: ${p:.2f}")
+    except BrokerError as e:
+        click.echo(f"Broker error: {e}", err=True)
+        sys.exit(1)
+
+
+@broker.command("trades")
+@click.option("--symbol", default=None, help="Filter by symbol")
+@click.option("--limit", default=20, help="Number of trades to show")
+@click.pass_context
+def broker_trades(ctx, symbol, limit):
+    """Show trade history."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.broker import Broker
+    b = Broker(config.project_dir / "data" / "broker.json")
+    trades = b.get_trades(symbol=symbol, limit=limit)
+
+    if not trades:
+        click.echo("No trades.")
+        return
+
+    for t in trades:
+        click.echo(f"  [{t['timestamp'][:19]}] {t['side'].upper()} {t['quantity']} {t['symbol']} @ ${t['price']:.2f}")
 
 
 if __name__ == "__main__":
