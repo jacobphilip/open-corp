@@ -536,3 +536,97 @@ class TestWorkerDataIntegrity:
         saved = json.loads((tmp_project / "workers" / "atomic1" / "memory.json").read_text())
         assert len(saved) == 5
         assert saved[-1]["content"] == "entry-4"
+
+
+class TestWorkerTools:
+    """Tests for tool integration in Worker.chat()."""
+
+    def _mock_router_response(self, content="OK"):
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": content}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        })
+
+    def test_tools_disabled_uses_plain_chat(self, tmp_project, config):
+        """When tools.enabled=False, uses plain router.chat() path."""
+        config.tools.enabled = False
+        _create_worker_files(tmp_project / "workers" / "t1")
+        worker = Worker("t1", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_router_response("plain")
+            )
+            response, _ = worker.chat("hi", router)
+
+        assert response == "plain"
+        # Verify no tools in payload
+        request_body = json.loads(route.calls[0].request.content)
+        assert "tools" not in request_body
+
+    def test_l1_gets_safe_tools_only(self, tmp_project, config):
+        """L1 worker only gets safe-tier tools."""
+        config.tools.enabled = True
+        _create_worker_files(tmp_project / "workers" / "t2", level=1)
+        worker = Worker("t2", tmp_project, config)
+
+        from framework.plugins import create_default_registry
+        registry = create_default_registry()
+        available = registry.resolve_for_worker(worker.level, None)
+        tool_names = {t.name for t in available}
+        assert "calculator" in tool_names
+        assert "current_time" in tool_names
+        assert "shell_exec" not in tool_names
+        assert "python_eval" not in tool_names
+        assert "web_search" not in tool_names
+
+    def test_l4_gets_all_tools(self, tmp_project, config):
+        """L4 worker gets all 9 tools."""
+        _create_worker_files(tmp_project / "workers" / "t3", level=4)
+        worker = Worker("t3", tmp_project, config)
+
+        from framework.plugins import create_default_registry
+        registry = create_default_registry()
+        available = registry.resolve_for_worker(worker.level, None)
+        assert len(available) == 9
+
+    def test_explicit_tool_list(self, tmp_project, config):
+        """Worker config.yaml tools list restricts available tools."""
+        config.tools.enabled = True
+        _create_worker_files(tmp_project / "workers" / "t4", level=3)
+        # Override config to only allow calculator
+        cfg_path = tmp_project / "workers" / "t4" / "config.yaml"
+        cfg_path.write_text(yaml.dump({
+            "level": 3,
+            "max_context_tokens": 2000,
+            "tools": ["calculator", "web_search"],
+        }))
+        worker = Worker("t4", tmp_project, config)
+
+        from framework.plugins import create_default_registry
+        registry = create_default_registry()
+        explicit = worker.worker_config.get("tools")
+        available = registry.resolve_for_worker(worker.level, explicit)
+        tool_names = {t.name for t in available}
+        assert tool_names == {"calculator", "web_search"}
+
+    def test_tool_enabled_chat_uses_tool_loop(self, tmp_project, config):
+        """With tools enabled and available, chat() uses tool_loop path."""
+        config.tools.enabled = True
+        _create_worker_files(tmp_project / "workers" / "t5", level=1)
+        worker = Worker("t5", tmp_project, config)
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=self._mock_router_response("tool reply")
+            )
+            response, history = worker.chat("hi", router)
+
+        assert response == "tool reply"
+        # Tools should be in the payload (L1 has safe tools)
+        request_body = json.loads(route.calls[0].request.content)
+        assert "tools" in request_body

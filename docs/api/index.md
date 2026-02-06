@@ -110,6 +110,39 @@ Auto-generated from source code docstrings.
     options:
       show_source: false
 
+## Plugins
+
+::: framework.plugins.ToolRegistry
+    options:
+      show_source: false
+      members:
+        - register
+        - get
+        - list_all
+        - available_for_level
+        - resolve_for_worker
+        - to_openai_schema
+
+::: framework.plugins.ToolDef
+    options:
+      show_source: false
+
+::: framework.plugins.ToolContext
+    options:
+      show_source: false
+
+::: framework.plugins.tool_loop
+    options:
+      show_source: false
+
+::: framework.plugins.create_default_registry
+    options:
+      show_source: false
+
+::: framework.plugins.load_custom_plugins
+    options:
+      show_source: false
+
 ## Exceptions
 
 ::: framework.exceptions

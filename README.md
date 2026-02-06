@@ -284,7 +284,7 @@ open-corp/
 │
 ├── framework/                   # Core framework code
 │   ├── exceptions.py            # Shared exceptions (BudgetExceeded, ModelUnavailable, RegistryError, MarketplaceError, etc.)
-│   ├── config.py                # Project configuration loader (charter.yaml + .env) with PromotionRules, LoggingConfig, RetentionConfig, SecurityConfig
+│   ├── config.py                # Project configuration loader (charter.yaml + .env) with PromotionRules, LoggingConfig, RetentionConfig, SecurityConfig, ToolsConfig
 │   ├── log.py                   # Structured logging (setup_logging, get_logger, SecretFilter — stdlib logging)
 │   ├── validation.py            # Input validation: worker names, path traversal, payload size, rate limiting, safe JSON I/O
 │   ├── accountant.py            # Budget guardrail (runs before every API call)
@@ -302,13 +302,17 @@ open-corp/
 │   ├── housekeeping.py          # Data retention: clean old events, spending, workflows, performance
 │   ├── webhooks.py              # Flask webhook server with bearer token auth + path traversal guard
 │   ├── broker.py                # Paper trading broker (TinyDB ledger + optional yfinance)
+│   ├── plugins.py               # Plugin system: tool registry, 9 built-in tools, tool loop, custom plugin loader
 │   ├── dashboard.py             # Web dashboard — Flask app factory with HTML pages + JSON API
 │   ├── templates/dashboard/     # Jinja2 templates (base, home, workers, budget, events, workflows, schedule, error)
 │   └── static/style.css         # Dashboard CSS (gauge bars, status badges, tables)
 │
 ├── scripts/
-│   ├── corp.py                  # CLI — init, status, budget, workers, hire, fire, chat, train, inspect, knowledge, schedule, workflow, daemon, events, webhook, broker, ops, review, delegate, marketplace, housekeep, validate, dashboard
+│   ├── corp.py                  # CLI — init, status, budget, workers, hire, fire, chat, train, inspect, knowledge, schedule, workflow, daemon, events, webhook, broker, ops, review, delegate, marketplace, housekeep, validate, dashboard, tools
 │   └── telegram_bot.py          # Telegram bot — /start, /workers, /chat, /status, /budget, /fire, /review, /delegate, /events, /schedule, /workflow, /inspect, /housekeep
+│
+├── plugins/                    # Custom tool plugins (optional)
+│   └── example/                # plugin.yaml + tool.py per plugin
 │
 ├── templates/                   # Starter worker templates
 │   ├── researcher/              # Research specialist
@@ -321,14 +325,15 @@ open-corp/
 ├── workflows/                   # Example workflow definitions
 │   └── example_trading.yaml     # Parallel scan + recommendation DAG
 │
-├── tests/                       # 509 tests (pytest + respx)
+├── tests/                       # 577 tests (pytest + respx)
 │   ├── conftest.py              # Shared fixtures
-│   ├── test_config.py           # 20 tests
+│   ├── test_config.py           # 22 tests
 │   ├── test_accountant.py       # 12 tests
-│   ├── test_router.py           # 23 tests
+│   ├── test_router.py           # 27 tests
 │   ├── test_exceptions.py       # 9 tests
 │   ├── test_templates.py        # 5 tests
-│   ├── test_worker.py           # 33 tests
+│   ├── test_worker.py           # 38 tests
+│   ├── test_plugins.py          # 57 tests
 │   ├── test_hr.py               # 36 tests
 │   ├── test_cli.py              # 65 tests
 │   ├── test_knowledge.py        # 23 tests
@@ -397,7 +402,8 @@ These principles are encoded in the `CLAUDE.md` file that your LLM reads automat
 | **v1.0** | Multi-ops management, template marketplace, self-optimizing workers, smart task routing, MkDocs docs; 321 tests |
 | **v1.1** | Structured logging, data retention, workflow timeouts/retries, worker fire with cleanup, webhook security fixes; 388 tests |
 | **v1.2** | Telegram bot parity (8 new commands), local web dashboard with HTML + JSON API; 423 tests |
-| **v1.3** (current) | Security hardening: input validation, dashboard auth, rate limiting, router retry, secret redaction, atomic JSON writes; 509 tests |
+| **v1.3** | Security hardening: input validation, dashboard auth, rate limiting, router retry, secret redaction, atomic JSON writes; 509 tests |
+| **v1.4** (current) | Plugin system: 9 built-in tools (calculator, web search, shell exec, etc.), seniority-gated access, custom plugins, tool calling loop; 577 tests |
 
 See [ROADMAP.md](ROADMAP.md) for full details.
 

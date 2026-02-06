@@ -44,6 +44,7 @@ nav:
     - Workflows: user-guide/workflows.md
     - Scheduling: user-guide/scheduling.md
     - Webhooks: user-guide/webhooks.md
+    - Plugins & Tools: user-guide/plugins.md
     - Trading: user-guide/trading.md
   - Architecture: architecture.md
   - API Reference: api/index.md

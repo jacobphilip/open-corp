@@ -1,6 +1,6 @@
 # Test Plan — open-corp
 
-Version: **1.3.0** | Total tests: **509** | Status: **All passing**
+Version: **1.4.0** | Total tests: **577** | Status: **All passing**
 
 ---
 
@@ -14,7 +14,7 @@ Version: **1.3.0** | Total tests: **509** | Status: **All passing**
 
 ---
 
-## test_config.py — 20 tests
+## test_config.py — 22 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -38,6 +38,8 @@ Version: **1.3.0** | Total tests: **509** | Status: **All passing**
 | 18 | test_security_config_defaults | SecurityConfig defaults when section missing |
 | 19 | test_security_config_from_charter | SecurityConfig parsed from charter.yaml |
 | 20 | test_env_permission_warning | .env with group/other readable permissions emits warning |
+| 21 | test_tools_config_defaults | ToolsConfig defaults when tools section missing |
+| 22 | test_tools_config_from_charter | ToolsConfig parsed from charter.yaml |
 
 ---
 
@@ -60,7 +62,7 @@ Version: **1.3.0** | Total tests: **509** | Status: **All passing**
 
 ---
 
-## test_router.py — 23 tests
+## test_router.py — 27 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -87,6 +89,10 @@ Version: **1.3.0** | Total tests: **509** | Status: **All passing**
 | 21 | test_max_tokens_in_payload | max_tokens included in API request body |
 | 22 | test_max_tokens_absent_by_default | max_tokens absent when not specified |
 | 23 | test_exponential_delay | Retry delay increases exponentially |
+| 24 | test_tools_in_payload | tools param passed through to API payload |
+| 25 | test_tools_absent_when_none | tools key absent when tools=None |
+| 26 | test_tool_calls_parsed | tool_calls in response returned in result dict |
+| 27 | test_no_tool_calls_key_without_tools | result dict has no tool_calls key when none in response |
 
 ---
 
@@ -148,7 +154,7 @@ Version: **1.3.0** | Total tests: **509** | Status: **All passing**
 
 ---
 
-## test_worker.py — 33 tests
+## test_worker.py — 38 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -185,6 +191,11 @@ Version: **1.3.0** | Total tests: **509** | Status: **All passing**
 | 31 | test_corrupted_memory_loads_empty | Corrupted memory.json loads as empty list |
 | 32 | test_corrupted_performance_loads_empty | Corrupted performance.json loads as empty list |
 | 33 | test_atomic_write_produces_valid_json | Multiple writes produce valid JSON on disk |
+| 34 | test_tools_disabled_uses_plain_chat | tools.enabled=False uses plain router.chat() |
+| 35 | test_l1_gets_safe_tools_only | L1 gets safe tools but not standard/privileged |
+| 36 | test_l4_gets_all_tools | L4 gets all 9 tools |
+| 37 | test_explicit_tool_list | Worker config.yaml tools list restricts available tools |
+| 38 | test_tool_enabled_chat_uses_tool_loop | With tools enabled, tools appear in API payload |
 
 ---
 
@@ -691,7 +702,71 @@ Version: **1.3.0** | Total tests: **509** | Status: **All passing**
 
 ---
 
-## Coverage Gaps (known, acceptable for v1.2)
+## test_plugins.py — 57 tests (NEW in v1.4)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_register_and_get | Register tool and retrieve by name |
+| 2 | test_get_unknown | Unknown tool returns None |
+| 3 | test_list_all | list_all returns all registered tools |
+| 4 | test_available_for_level_1 | L1 gets safe tools only |
+| 5 | test_available_for_level_3 | L3 gets safe + standard tools |
+| 6 | test_available_for_level_4 | L4 gets all tools |
+| 7 | test_resolve_with_explicit_list | Explicit list restricts available tools |
+| 8 | test_resolve_without_explicit_list | No explicit list returns all for level |
+| 9 | test_to_openai_schema | Correct OpenAI-compatible tool schema format |
+| 10 | test_auto_min_level | Auto-sets min_level from tier via __post_init__ |
+| 11 | test_factory_creates_nine | create_default_registry() returns 9 tools |
+| 12 | test_no_tool_calls | Tool loop returns immediately when no tool_calls |
+| 13 | test_single_tool_call | Executes one tool call and returns content |
+| 14 | test_max_iterations_cap | Loop stops at max_iterations |
+| 15 | test_tool_error_handling | Tool execution error returned as tool message |
+| 16 | test_budget_aggregation | Tokens/cost aggregated across iterations |
+| 17 | test_unknown_tool | Unknown tool name returns error message |
+| 18 | test_invalid_json_args | Invalid JSON in arguments returns error |
+| 19 | test_multi_tool_calls | Multiple tool calls in single response |
+| 20 | test_result_truncation | Tool results truncated to max_result_chars |
+| 21 | test_tool_loop_fallback | 400 with tools → retries without tools |
+| 22 | test_basic_arithmetic | calculator: 2 + 3 = 5 |
+| 23 | test_float_arithmetic | calculator: 3.14 * 2 |
+| 24 | test_parentheses | calculator: (1 + 2) * 3 |
+| 25 | test_division_by_zero | calculator: division by zero error |
+| 26 | test_injection_rejected | calculator: rejects non-arithmetic expressions |
+| 27 | test_utc_format | current_time: returns ISO format |
+| 28 | test_with_offset | current_time: supports timezone offset |
+| 29 | test_with_results | knowledge_search: returns matching entries |
+| 30 | test_no_results | knowledge_search: empty when no match |
+| 31 | test_no_knowledge_base | knowledge_search: handles missing knowledge |
+| 32 | test_key_access | json_transform: top-level key extraction |
+| 33 | test_nested_path | json_transform: dot-path navigation |
+| 34 | test_array_index | json_transform: array index access |
+| 35 | test_invalid_path | json_transform: invalid path returns error |
+| 36 | test_web_search_success | web_search: mocked DuckDuckGo API response |
+| 37 | test_web_search_network_error | web_search: network error handled |
+| 38 | test_web_search_ssrf_blocked | web_search: blocked host rejected |
+| 39 | test_get_request | http_request: GET returns response body |
+| 40 | test_post_request | http_request: POST with body |
+| 41 | test_timeout | http_request: timeout error handled |
+| 42 | test_ssrf_blocked | http_request: SSRF via blocked host rejected |
+| 43 | test_read_file | file_reader: reads file within project |
+| 44 | test_path_traversal_blocked | file_reader: path traversal rejected |
+| 45 | test_not_found | file_reader: missing file error |
+| 46 | test_large_truncated | file_reader: large file truncated to 50KB |
+| 47 | test_success | shell_exec: command runs and returns output |
+| 48 | test_timeout | shell_exec: timeout handled |
+| 49 | test_output_captured | shell_exec: stdout + stderr captured |
+| 50 | test_error_exit | shell_exec: non-zero exit code reported |
+| 51 | test_math | python_eval: math expression evaluates |
+| 52 | test_string_op | python_eval: string operations work |
+| 53 | test_import_blocked | python_eval: import statements rejected |
+| 54 | test_dunder_blocked | python_eval: dunder access rejected |
+| 55 | test_valid_load | Custom plugin: valid plugin loaded into registry |
+| 56 | test_missing_manifest | Custom plugin: missing plugin.yaml skipped |
+| 57 | test_missing_execute | Custom plugin: missing execute() skipped |
+
+---
+
+## Coverage Gaps (known, acceptable for v1.4)
 
 - **YouTube training pipeline:** No automated tests for actual download/transcribe (requires yt-dlp + whisper)
 - **PDF training:** Uses mocked pypdf in tests (real PDF parsing tested manually)
@@ -702,4 +777,4 @@ Version: **1.3.0** | Total tests: **509** | Status: **All passing**
 
 ---
 
-Total tests: **509** | All passing
+Total tests: **577** | All passing

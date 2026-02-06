@@ -67,6 +67,10 @@ Options:
 
 Without args: project overview with all workers. With a worker name: detailed worker profile, skills, memory count, knowledge count, performance stats.
 
+### `corp tools [worker]`
+
+List available tools. Without args: all registered tools with tier, minimum level, and description. With a worker name: tools available to that specific worker based on their seniority level and optional tool restrictions in their config.
+
 ## Operations Management
 
 ### `corp ops create <name>`

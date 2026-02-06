@@ -1,6 +1,6 @@
 # Roadmap — open-corp
 
-Current version: **1.3.0**
+Current version: **1.4.0**
 
 ---
 
@@ -138,3 +138,20 @@ Status: **Complete**
 - [x] Worker name validation — Regex whitelist at all entry points (HR, scheduler, dashboard, webhooks, CLI, bot)
 - [x] `SecurityConfig` dataclass — `webhook_rate_limit`, `webhook_rate_burst`, `dashboard_rate_limit`, `dashboard_rate_burst`
 - [x] Tests — 509 tests, all passing
+
+---
+
+## v1.4.0 — Plugin System
+
+Status: **Complete**
+
+- [x] Tool calling — Workers can call tools during conversations via OpenRouter's tool calling API
+- [x] 9 built-in tools across 3 safety tiers: calculator, current_time, knowledge_search, json_transform (safe); web_search, http_request, file_reader (standard); shell_exec, python_eval (privileged)
+- [x] Seniority-gated access — L1-2: safe tools, L3+: standard, L4+: privileged
+- [x] Tool loop — Multi-iteration: send → detect tool_calls → execute → re-send → repeat
+- [x] Custom plugins — `plugins/` directory with `plugin.yaml` + `tool.py` per plugin
+- [x] Safety measures — AST-only calculator/python_eval, SSRF prevention, path traversal guard, output truncation, iteration cap
+- [x] `ToolsConfig` dataclass — `enabled`, `max_tool_iterations`, `tool_result_max_chars`, `shell_timeout`, `http_timeout`, `blocked_hosts`
+- [x] CLI: `corp tools [worker]` — list available tools, optionally filtered by worker seniority
+- [x] Worker `config.yaml` supports optional `tools:` list to restrict available tools
+- [x] Tests — 577 tests, all passing

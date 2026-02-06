@@ -150,3 +150,29 @@ class MarketplaceError(Exception):
         if suggestion:
             msg += f"\n  Try: {suggestion}"
         super().__init__(msg)
+
+
+class ToolError(Exception):
+    """Raised when a tool execution fails."""
+
+    def __init__(self, tool_name: str, reason: str, suggestion: str = ""):
+        self.tool_name = tool_name
+        self.reason = reason
+        self.suggestion = suggestion
+        msg = f"Tool '{tool_name}' error: {reason}"
+        if suggestion:
+            msg += f"\n  Try: {suggestion}"
+        super().__init__(msg)
+
+
+class PluginError(Exception):
+    """Raised when a custom plugin fails to load or execute."""
+
+    def __init__(self, plugin_name: str, reason: str, suggestion: str = ""):
+        self.plugin_name = plugin_name
+        self.reason = reason
+        self.suggestion = suggestion
+        msg = f"Plugin '{plugin_name}' error: {reason}"
+        if suggestion:
+            msg += f"\n  Try: {suggestion}"
+        super().__init__(msg)

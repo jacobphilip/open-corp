@@ -15,8 +15,8 @@ from framework.events import EventLog
 from framework.log import setup_logging
 from framework.exceptions import (
     BrokerError, BudgetExceeded, ConfigError, MarketplaceError, ModelUnavailable,
-    RegistryError, SchedulerError, TrainingError, ValidationError, WebhookError,
-    WorkerNotFound, WorkflowError,
+    PluginError, RegistryError, SchedulerError, ToolError, TrainingError,
+    ValidationError, WebhookError, WorkerNotFound, WorkflowError,
 )
 from framework.validation import validate_worker_name
 from framework.hr import HR
@@ -579,6 +579,62 @@ def inspect(ctx, worker_name):
             if ratings:
                 avg = sum(ratings) / len(ratings)
                 click.echo(f"Avg rating: {avg:.1f}")
+
+
+@cli.command()
+@click.argument("worker_name", required=False, default=None)
+@click.pass_context
+def tools(ctx, worker_name):
+    """List available tools, or tools for a specific worker."""
+    try:
+        config, _, _, _ = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.plugins import create_default_registry, load_custom_plugins
+
+    registry = create_default_registry()
+
+    # Load custom plugins
+    plugins_dir = config.project_dir / "plugins"
+    if plugins_dir.exists():
+        load_custom_plugins(plugins_dir, registry)
+
+    if not config.tools.enabled:
+        click.echo("Tools are disabled in charter.yaml (tools.enabled: false)")
+        return
+
+    if worker_name is None:
+        # List all tools with tier info
+        click.echo("Available tools:")
+        for tool in registry.list_all():
+            click.echo(f"  {tool.name} [{tool.tier}, L{tool.min_level}+] — {tool.description}")
+    else:
+        try:
+            validate_worker_name(worker_name)
+        except ValidationError as e:
+            click.echo(f"Invalid worker name: {e}", err=True)
+            sys.exit(1)
+
+        try:
+            worker = Worker(worker_name, config.project_dir, config)
+        except WorkerNotFound:
+            click.echo(f"Worker '{worker_name}' not found.", err=True)
+            sys.exit(1)
+
+        explicit_tools = worker.worker_config.get("tools")
+        available = registry.resolve_for_worker(worker.level, explicit_tools)
+
+        seniority = {1: "Intern", 2: "Junior", 3: "Mid", 4: "Senior", 5: "Principal"}
+        title = seniority.get(worker.level, f"L{worker.level}")
+        click.echo(f"Tools for {worker_name} ({title}, L{worker.level}):")
+
+        if not available:
+            click.echo("  (no tools available at this level)")
+        else:
+            for tool in available:
+                click.echo(f"  {tool.name} [{tool.tier}] — {tool.description}")
 
 
 def _load_project_full(project_dir=None):

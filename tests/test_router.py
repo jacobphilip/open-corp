@@ -245,6 +245,67 @@ class TestRouter:
         # Should have waited at least base_delay * (1 + 2) = 0.03 seconds
         assert elapsed >= 0.02
 
+    def test_tools_in_payload(self, config, accountant):
+        """tools parameter is passed through to API payload."""
+        router = Router(config, accountant, api_key="test-key")
+        tools = [{"type": "function", "function": {"name": "calc", "description": "Math"}}]
+
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=httpx.Response(200, json=_mock_openrouter_response("OK"))
+            )
+            router.chat([{"role": "user", "content": "hi"}], tier="cheap", tools=tools)
+
+        request_body = json.loads(route.calls[0].request.content)
+        assert "tools" in request_body
+        assert request_body["tools"][0]["function"]["name"] == "calc"
+
+    def test_tools_absent_when_none(self, config, accountant):
+        """tools key is not in payload when tools=None."""
+        router = Router(config, accountant, api_key="test-key")
+
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=httpx.Response(200, json=_mock_openrouter_response("OK"))
+            )
+            router.chat([{"role": "user", "content": "hi"}], tier="cheap")
+
+        request_body = json.loads(route.calls[0].request.content)
+        assert "tools" not in request_body
+
+    def test_tool_calls_parsed(self, config, accountant):
+        """tool_calls in response are returned in result dict."""
+        router = Router(config, accountant, api_key="test-key")
+        tool_calls = [{"id": "tc1", "type": "function", "function": {"name": "calc", "arguments": "{}"}}]
+        response_json = {
+            "choices": [{"message": {"content": "", "tool_calls": tool_calls}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                return_value=httpx.Response(200, json=response_json)
+            )
+            result = router.chat(
+                [{"role": "user", "content": "hi"}], tier="cheap",
+                tools=[{"type": "function", "function": {"name": "calc"}}],
+            )
+
+        assert "tool_calls" in result
+        assert result["tool_calls"][0]["id"] == "tc1"
+
+    def test_no_tool_calls_key_without_tools(self, config, accountant):
+        """Result dict has no tool_calls key when response has none."""
+        router = Router(config, accountant, api_key="test-key")
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                return_value=httpx.Response(200, json=_mock_openrouter_response("OK"))
+            )
+            result = router.chat([{"role": "user", "content": "hi"}], tier="cheap")
+
+        assert "tool_calls" not in result
+
     def test_caution_prefers_cheap(self, config, accountant):
         """Under CAUTION budget, premium tier is downgraded."""
         # Spend to CAUTION level (60-80%)

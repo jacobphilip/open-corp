@@ -155,6 +155,7 @@ class Router:
         model: str | None = None,
         worker_name: str = "system",
         max_tokens: int | None = None,
+        tools: list[dict] | None = None,
     ) -> dict:
         """Send a chat completion request. Returns {content, model_used, tokens, cost}.
 
@@ -193,7 +194,7 @@ class Router:
         for candidate in models_to_try:
             for attempt in range(1 + self.max_retries):
                 try:
-                    return self._call_openrouter(candidate, messages, worker_name, max_tokens)
+                    return self._call_openrouter(candidate, messages, worker_name, max_tokens, tools)
                 except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
                     last_error = e
                     if self._is_retryable(e) and attempt < self.max_retries:
@@ -218,6 +219,7 @@ class Router:
         messages: list[dict],
         worker_name: str,
         max_tokens: int | None = None,
+        tools: list[dict] | None = None,
     ) -> dict:
         """Make the actual API call to OpenRouter."""
         payload = {
@@ -226,6 +228,8 @@ class Router:
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if tools is not None:
+            payload["tools"] = tools
 
         resp = httpx.post(
             OPENROUTER_API_URL,
@@ -238,9 +242,14 @@ class Router:
 
         # Extract response
         content = ""
+        tool_calls = None
         choices = data.get("choices", [])
         if choices:
-            content = choices[0].get("message", {}).get("content", "")
+            message = choices[0].get("message", {})
+            content = message.get("content", "") or ""
+            raw_tool_calls = message.get("tool_calls")
+            if raw_tool_calls:
+                tool_calls = raw_tool_calls
 
         # Extract usage
         usage = data.get("usage", {})
@@ -257,12 +266,15 @@ class Router:
             worker=worker_name,
         )
 
-        return {
+        result = {
             "content": content,
             "model_used": model,
             "tokens": {"in": tokens_in, "out": tokens_out},
             "cost": cost,
         }
+        if tool_calls is not None:
+            result["tool_calls"] = tool_calls
+        return result
 
     def stream(
         self,

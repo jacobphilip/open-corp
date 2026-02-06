@@ -180,6 +180,58 @@ class Worker:
         messages.extend(history)
         messages.append({"role": "user", "content": message})
 
+        # Check if tools are enabled and available for this worker
+        tools_config = self.config.tools
+        if tools_config.enabled:
+            from framework.plugins import (
+                ToolContext, ToolRegistry, create_default_registry,
+                load_custom_plugins, tool_loop,
+            )
+
+            registry = create_default_registry()
+
+            # Load custom plugins if plugins/ dir exists
+            plugins_dir = self.project_dir / "plugins"
+            if plugins_dir.exists():
+                load_custom_plugins(plugins_dir, registry)
+
+            # Resolve tools for this worker's level
+            explicit_tools = self.worker_config.get("tools")
+            available = registry.resolve_for_worker(self.level, explicit_tools)
+
+            if available:
+                context = ToolContext(
+                    project_dir=self.project_dir,
+                    worker_name=self.name,
+                    knowledge=self.knowledge,
+                    tools_config=tools_config,
+                )
+                tools_schema = ToolRegistry.to_openai_schema(available)
+
+                result = tool_loop(
+                    router=router,
+                    messages=messages,
+                    tools_schema=tools_schema,
+                    registry=registry,
+                    context=context,
+                    worker_name=self.name,
+                    tier=self.get_tier(),
+                    max_iterations=tools_config.max_tool_iterations,
+                    max_result_chars=tools_config.tool_result_max_chars,
+                )
+
+                response_text = result["content"]
+
+                updated_history = list(history)
+                updated_history.append({"role": "user", "content": message})
+                updated_history.append({"role": "assistant", "content": response_text})
+
+                self.update_memory("interaction", f"User: {message[:200]}")
+                self.update_memory("interaction", f"Response: {response_text[:200]}")
+
+                return response_text, updated_history
+
+        # Plain chat path (tools disabled or no tools available)
         result = router.chat(
             messages=messages,
             tier=self.get_tier(),

@@ -2,13 +2,19 @@
 
 
 ## Backlog
-- [ ] Thread-safe TinyDB access for scheduler [v0.5]
-- [ ] Parallel workflow fan-out (threaded node execution) [v0.5]
-- [ ] Daemon systemd/nohup support [v0.5]
-- [ ] Board of Advisors wiring (Grok, ChatGPT, Claude) [v0.5]
-- [ ] Webhook endpoints for external triggers [v0.5]
+- [ ] Board of Advisors wiring (Grok, ChatGPT, Claude)
 
 ## Done
+
+### v1.4 — Plugin System
+- [x] Add ToolError and PluginError exceptions ✓ verified
+- [x] Add ToolsConfig dataclass to config.py ✓ verified
+- [x] Add tools parameter to Router.chat() and _call_openrouter() ✓ verified
+- [x] Create framework/plugins.py — registry, 9 built-in tools, tool loop, custom plugin loader ✓ verified
+- [x] Integrate tools into Worker.chat() ✓ verified
+- [x] Add `corp tools [worker]` CLI command ✓ verified
+- [x] Write 68 tests (57 test_plugins.py + 11 across config/router/worker) ✓ verified
+- [x] Update docs: CHANGELOG, ROADMAP, README, TEST_PLAN, charter.yaml, pyproject.toml, MkDocs ✓ verified
 
 ### v0.4 — Automation
 - [x] Add `max_history_messages` to WorkerDefaults + chat truncation ✓ verified

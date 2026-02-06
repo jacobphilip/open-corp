@@ -69,3 +69,11 @@ security:
   webhook_rate_burst: 20    # burst capacity
   dashboard_rate_limit: 30  # requests/sec per IP
   dashboard_rate_burst: 60  # burst capacity
+
+# Tool calling (workers can use tools during conversations)
+tools:
+  enabled: true               # Set to false to disable tool calling globally
+  max_tool_iterations: 10     # Max tool-calling rounds per chat
+  tool_result_max_chars: 4000 # Truncate tool results to this length
+  shell_timeout: 30           # Shell exec timeout (seconds)
+  http_timeout: 15            # HTTP request timeout (seconds)

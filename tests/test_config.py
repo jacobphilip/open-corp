@@ -6,7 +6,7 @@ import warnings
 import pytest
 import yaml
 
-from framework.config import LoggingConfig, ProjectConfig, RetentionConfig, SecurityConfig
+from framework.config import LoggingConfig, ProjectConfig, RetentionConfig, SecurityConfig, ToolsConfig
 from framework.exceptions import ConfigError
 
 
@@ -250,3 +250,39 @@ class TestProjectConfig:
 
         permission_warnings = [x for x in w if "group/other readable" in str(x.message)]
         assert len(permission_warnings) == 0
+
+    def test_tools_config_defaults(self, tmp_path):
+        """ToolsConfig defaults when tools section missing."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.tools.enabled is True
+        assert config.tools.max_tool_iterations == 10
+        assert config.tools.tool_result_max_chars == 4000
+        assert config.tools.shell_timeout == 30
+        assert config.tools.http_timeout == 15
+        assert "169.254.169.254" in config.tools.blocked_hosts
+
+    def test_tools_config_from_charter(self, tmp_path):
+        """ToolsConfig parsed from charter.yaml tools section."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+            "tools": {
+                "enabled": False,
+                "max_tool_iterations": 5,
+                "tool_result_max_chars": 2000,
+                "shell_timeout": 10,
+                "http_timeout": 5,
+            },
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.tools.enabled is False
+        assert config.tools.max_tool_iterations == 5
+        assert config.tools.tool_result_max_chars == 2000
+        assert config.tools.shell_timeout == 10
+        assert config.tools.http_timeout == 5

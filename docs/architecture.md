@@ -50,6 +50,7 @@ exceptions → config → accountant → router → worker → hr → CLI
                   ↘ webhooks/broker → CLI
                   ↘ registry → CLI
                   ↘ marketplace → CLI
+                  ↘ plugins → worker
                   ↘ task_router → workflow/CLI
 ```
 
@@ -82,6 +83,10 @@ Models are organized into tiers (cheap, mid, premium). The router tries models w
 ### Worker Seniority
 
 Worker level (1-5) maps to model tier access. Higher-level workers get access to more capable (and expensive) models. Performance-based auto-promotion/demotion adjusts levels over time.
+
+### Tool Calling
+
+Workers can call tools during conversations via OpenRouter's OpenAI-compatible tool calling API. The tool loop sends messages with a `tools` schema, detects `tool_calls` in the response, executes them locally, appends results, and re-sends until the model returns a content-only response. Tools are seniority-gated: L1-2 get safe tools (calculator, current_time, knowledge_search, json_transform), L3+ adds standard tools (web_search, http_request, file_reader), and L4+ gets privileged tools (shell_exec, python_eval). Custom plugins in `plugins/` are auto-loaded. Safety measures include AST-only evaluation, SSRF prevention, path traversal guards, output truncation, and iteration caps.
 
 ### Input Validation
 
@@ -123,6 +128,7 @@ The router retries transient HTTP errors (429, 502, 503, 504) and connection/tim
 | `broker.py` | Paper trading broker |
 | `registry.py` | Multi-operation project registry |
 | `marketplace.py` | Remote template marketplace client |
+| `plugins.py` | Tool registry, 9 built-in tools, tool loop, custom plugins |
 | `validation.py` | Input validation, rate limiting, safe JSON I/O |
 | `dashboard.py` | Web dashboard with auth and rate limiting |
 | `housekeeping.py` | Data retention and cleanup |

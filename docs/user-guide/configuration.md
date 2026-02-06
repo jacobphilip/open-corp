@@ -63,6 +63,13 @@ security:
   dashboard_rate_limit: 30    # Requests/sec per IP (dashboard)
   dashboard_rate_burst: 60    # Burst capacity
 
+tools:
+  enabled: true               # Enable/disable tool calling globally
+  max_tool_iterations: 10     # Max tool-calling rounds per chat
+  tool_result_max_chars: 4000 # Truncate tool results to this length
+  shell_timeout: 30           # Shell exec timeout (seconds)
+  http_timeout: 15            # HTTP request timeout (seconds)
+
 git:
   auto_commit: false
   auto_push: false
@@ -95,6 +102,15 @@ level: 1                      # Seniority (1=Intern, 5=Principal)
 max_context_tokens: 2000
 model: "deepseek/deepseek-chat"
 ```
+
+Workers can also have an optional `tools` list to restrict which tools are available:
+
+```yaml
+level: 3
+tools: [calculator, web_search]   # Only these tools (must qualify by level)
+```
+
+Without an explicit `tools` list, workers get all tools their seniority level qualifies for.
 
 ## Seniority Levels
 
@@ -171,3 +187,20 @@ All fields are optional with the defaults shown above.
 - `max_retries` — retries per model (default: 2)
 - `retry_base_delay` — initial delay in seconds (default: 1.0)
 - `retry_max_delay` — maximum delay cap (default: 8.0)
+
+## Tools
+
+Configure worker tool calling:
+
+```yaml
+tools:
+  enabled: true               # Set to false to disable all tool calling
+  max_tool_iterations: 10     # Max tool-calling rounds per chat message
+  tool_result_max_chars: 4000 # Truncate tool results to this length
+  shell_timeout: 30           # Timeout for shell_exec tool (seconds)
+  http_timeout: 15            # Timeout for http_request and web_search (seconds)
+```
+
+All fields are optional with the defaults shown above. Set `enabled: false` to disable tool calling globally.
+
+See [Plugins & Tools](plugins.md) for details on built-in tools, safety tiers, and custom plugins.

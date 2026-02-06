@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.4.0] — 2026-02-05
+
+### Added
+- **framework/plugins.py** — Plugin system with tool calling: `ToolDef`, `ToolContext`, `ToolRegistry` (register, resolve by level, OpenAI schema), `tool_loop()` (multi-iteration tool calling), 9 built-in tools, custom plugin loader, `create_default_registry()` factory
+- **Built-in tools (safe tier, L1+):** `calculator` (AST-based safe math), `current_time` (UTC + offset), `knowledge_search` (worker knowledge base), `json_transform` (parse + dot-path extraction)
+- **Built-in tools (standard tier, L3+):** `web_search` (DuckDuckGo API, SSRF-protected), `http_request` (httpx with blocked hosts), `file_reader` (path traversal guard, 50KB max)
+- **Built-in tools (privileged tier, L4+):** `shell_exec` (subprocess with timeout), `python_eval` (AST-validated, restricted globals, 5s timeout)
+- **Custom plugins** — `plugins/*/plugin.yaml` + `tool.py` with `execute()` function; auto-loaded by worker on chat
+- **framework/config.py** — `ToolsConfig` dataclass with `enabled`, `max_tool_iterations`, `tool_result_max_chars`, `shell_timeout`, `http_timeout`, `blocked_hosts` (cloud metadata, localhost); parsed from charter.yaml `tools:` section
+- **framework/exceptions.py** — `ToolError(tool_name, reason, suggestion)` and `PluginError(plugin_name, reason, suggestion)` exception classes
+- **scripts/corp.py** — `corp tools [worker]` command: without args lists all tools with tier/description; with worker name shows tools available at that seniority level
+- **charter.yaml** — `tools:` section with tool calling configuration
+- **tests/test_plugins.py** — 57 tests for registry, tool loop, all 9 tools, custom plugin loader
+- **tests/test_config.py** — +2 tests for ToolsConfig defaults and charter parsing
+- **tests/test_router.py** — +4 tests for tools payload, tool_calls parsing
+- **tests/test_worker.py** — +5 tests for tool-enabled chat, seniority filtering, explicit tool list
+
+### Changed
+- `framework/router.py` — `chat()` and `_call_openrouter()` accept `tools` parameter; response parsing extracts `tool_calls` from OpenAI-compatible response
+- `framework/worker.py` — `chat()` creates tool registry, loads custom plugins, resolves tools for worker level, calls `tool_loop()` when tools available; falls back to plain `router.chat()` when disabled
+- Total test count: 509 → 577
+
+---
+
 ## [1.3.0] — 2026-02-05
 
 ### Added

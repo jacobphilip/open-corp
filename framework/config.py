@@ -69,6 +69,25 @@ class SecurityConfig:
     dashboard_rate_burst: int = 60
 
 
+_DEFAULT_BLOCKED_HOSTS = [
+    "169.254.169.254",
+    "metadata.google.internal",
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+]
+
+
+@dataclass
+class ToolsConfig:
+    enabled: bool = True
+    max_tool_iterations: int = 10
+    tool_result_max_chars: int = 4000
+    shell_timeout: int = 30
+    http_timeout: int = 15
+    blocked_hosts: list[str] = field(default_factory=lambda: list(_DEFAULT_BLOCKED_HOSTS))
+
+
 @dataclass
 class GitConfig:
     auto_commit: bool = True
@@ -91,6 +110,7 @@ class ProjectConfig:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     retention: RetentionConfig = field(default_factory=RetentionConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    tools: ToolsConfig = field(default_factory=ToolsConfig)
     marketplace_url: str = ""
     board_enabled: bool = False
 
@@ -239,6 +259,18 @@ class ProjectConfig:
             dashboard_rate_burst=int(sec_raw.get("dashboard_rate_burst", 60)),
         )
 
+        # Tools config
+        tools_raw = raw.get("tools", {})
+        tools_blocked = tools_raw.get("blocked_hosts", list(_DEFAULT_BLOCKED_HOSTS))
+        tools = ToolsConfig(
+            enabled=tools_raw.get("enabled", True),
+            max_tool_iterations=int(tools_raw.get("max_tool_iterations", 10)),
+            tool_result_max_chars=int(tools_raw.get("tool_result_max_chars", 4000)),
+            shell_timeout=int(tools_raw.get("shell_timeout", 30)),
+            http_timeout=int(tools_raw.get("http_timeout", 15)),
+            blocked_hosts=tools_blocked,
+        )
+
         # Board
         board_enabled = raw.get("board", {}).get("enabled", False)
 
@@ -255,6 +287,7 @@ class ProjectConfig:
             logging=logging_config,
             retention=retention,
             security=security,
+            tools=tools,
             marketplace_url=marketplace_url,
             board_enabled=board_enabled,
         )
