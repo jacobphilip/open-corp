@@ -1,6 +1,18 @@
 """Shared exceptions for the open-corp framework."""
 
 
+class ValidationError(Exception):
+    """Raised when input validation fails."""
+
+    def __init__(self, reason: str, suggestion: str = ""):
+        self.reason = reason
+        self.suggestion = suggestion
+        msg = f"Validation error: {reason}"
+        if suggestion:
+            msg += f"\n  Try: {suggestion}"
+        super().__init__(msg)
+
+
 class ConfigError(Exception):
     """Raised when project configuration is invalid or missing."""
 

@@ -1,6 +1,6 @@
 # Test Plan — open-corp
 
-Version: **1.2.0** | Total tests: **423** | Status: **All passing**
+Version: **1.3.0** | Total tests: **509** | Status: **All passing**
 
 ---
 
@@ -14,7 +14,7 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 
 ---
 
-## test_config.py — 17 tests
+## test_config.py — 20 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -35,6 +35,9 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 | 15 | test_logging_config_dataclass_defaults | LoggingConfig default field values |
 | 16 | test_retention_config_dataclass_defaults | RetentionConfig default field values |
 | 17 | test_logging_config_custom_values | LoggingConfig with custom level and file |
+| 18 | test_security_config_defaults | SecurityConfig defaults when section missing |
+| 19 | test_security_config_from_charter | SecurityConfig parsed from charter.yaml |
+| 20 | test_env_permission_warning | .env with group/other readable permissions emits warning |
 
 ---
 
@@ -57,7 +60,7 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 
 ---
 
-## test_router.py — 14 tests
+## test_router.py — 23 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -75,6 +78,15 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 | 12 | test_fetch_pricing_network_error | Network error falls back to empty dict |
 | 13 | test_fetch_pricing_uses_disk_cache | Pre-populated disk cache returned on network error |
 | 14 | test_fetch_pricing_overwrites_cache | Fresh fetch replaces old cached data |
+| 15 | test_retry_on_503 | 503 retried before falling back to next model |
+| 16 | test_retry_on_429 | 429 retried with exponential backoff |
+| 17 | test_retry_on_timeout | Timeout exception retried |
+| 18 | test_no_retry_on_400 | 400 not retried, falls back immediately |
+| 19 | test_no_retry_on_401 | 401 not retried, falls back immediately |
+| 20 | test_max_retries_zero | max_retries=0 disables retry |
+| 21 | test_max_tokens_in_payload | max_tokens included in API request body |
+| 22 | test_max_tokens_absent_by_default | max_tokens absent when not specified |
+| 23 | test_exponential_delay | Retry delay increases exponentially |
 
 ---
 
@@ -136,7 +148,7 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 
 ---
 
-## test_worker.py — 30 tests
+## test_worker.py — 33 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -170,6 +182,9 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 | 28 | test_summarize_session_empty_history | Empty → returns "" |
 | 29 | test_summarize_session_records_memory | Memory entry type "session_summary" |
 | 30 | test_summarize_session_api_call | Router called with conversation |
+| 31 | test_corrupted_memory_loads_empty | Corrupted memory.json loads as empty list |
+| 32 | test_corrupted_performance_loads_empty | Corrupted performance.json loads as empty list |
+| 33 | test_atomic_write_produces_valid_json | Multiple writes produce valid JSON on disk |
 
 ---
 
@@ -388,7 +403,7 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 
 ---
 
-## test_webhooks.py — 22 tests
+## test_webhooks.py — 25 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -414,6 +429,9 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 | 20 | test_webhook_path_within_project_relative | Relative path within project works |
 | 21 | test_webhook_path_within_project_absolute | Absolute path within project works |
 | 22 | test_webhook_path_traversal_dot_dot | Nested `../` traversal → 400 |
+| 23 | test_rate_limit_blocks | Rate limiter returns 429 after burst exhausted |
+| 24 | test_payload_size_rejected | Payloads over 1MB rejected with 400 |
+| 25 | test_worker_name_validated | Path traversal in worker name returns 400 |
 
 ---
 
@@ -529,7 +547,7 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 
 ---
 
-## test_logging.py — 8 tests (NEW in v1.1)
+## test_logging.py — 15 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -541,6 +559,13 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 | 6 | test_router_logs_fallback | caplog captures router tier fallback |
 | 7 | test_accountant_logs_warning | caplog captures budget warning |
 | 8 | test_workflow_logs_lifecycle | caplog captures workflow start/complete |
+| 9 | test_redacts_openrouter_api_key | SecretFilter redacts sk-or-* patterns |
+| 10 | test_redacts_generic_api_key | SecretFilter redacts sk-* patterns |
+| 11 | test_redacts_bearer_token | SecretFilter redacts Bearer tokens |
+| 12 | test_redacts_env_var_assignment | SecretFilter redacts API_KEY=value patterns |
+| 13 | test_leaves_normal_messages | Normal messages pass through unmodified |
+| 14 | test_redacts_in_args | Secrets in %-format args also redacted |
+| 15 | test_setup_logging_adds_secret_filter | setup_logging(redact_secrets=True) adds SecretFilter |
 
 ---
 
@@ -565,7 +590,7 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 
 ---
 
-## test_dashboard.py — 20 tests (NEW in v1.2)
+## test_dashboard.py — 30 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -589,6 +614,80 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 | 18 | test_api_events_with_filter | /api/events?type= filters correctly |
 | 19 | test_api_workflows_json | /api/workflows returns run list |
 | 20 | test_api_schedule_json | /api/schedule returns task list |
+| 21 | test_no_auth_without_token | Dashboard without auth_token allows all requests |
+| 22 | test_auth_required_with_token | Dashboard with auth_token returns 401 without credentials |
+| 23 | test_auth_via_header | Valid Authorization Bearer header returns 200 |
+| 24 | test_auth_via_cookie | Cookie set after login allows access |
+| 25 | test_login_invalid_token | Wrong token on /login returns 401 |
+| 26 | test_auth_wrong_header | Wrong Bearer token returns 401 |
+| 27 | test_api_requires_auth | API endpoints also require auth when token set |
+| 28 | test_worker_detail_validates_name | Invalid worker name returns 400 |
+| 29 | test_rate_limit | Rate limiter returns 429 after burst exhausted |
+| 30 | test_login_sets_httponly_cookie | Login cookie has HttpOnly flag |
+
+---
+
+## test_validation.py — 35 tests (NEW in v1.3)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_valid_simple_name | Simple alphanumeric name accepted |
+| 2 | test_valid_with_hyphens | Name with hyphens accepted |
+| 3 | test_valid_with_underscores | Name with underscores accepted |
+| 4 | test_valid_with_numbers | Name with digits accepted |
+| 5 | test_valid_max_length | 64-char name accepted |
+| 6 | test_empty_name | Empty name raises ValidationError |
+| 7 | test_none_name | None raises ValidationError |
+| 8 | test_path_traversal | `../etc/passwd` raises ValidationError |
+| 9 | test_slashes | Forward slashes raise ValidationError |
+| 10 | test_backslashes | Backslashes raise ValidationError |
+| 11 | test_null_bytes | Null bytes raise ValidationError |
+| 12 | test_too_long | >64 chars raises ValidationError |
+| 13 | test_leading_hyphen | Leading hyphen raises ValidationError |
+| 14 | test_leading_underscore | Leading underscore raises ValidationError |
+| 15 | test_special_chars | Special characters raise ValidationError |
+| 16 | test_within_project | Path within project passes |
+| 17 | test_absolute_escape | Absolute path outside project raises ValidationError |
+| 18 | test_relative_escape | `../../etc/passwd` raises ValidationError |
+| 19 | test_exact_root | Project root itself passes |
+| 20 | test_within_limit | Data within limit passes |
+| 21 | test_at_limit | Data at exact limit passes |
+| 22 | test_over_limit | Data over limit raises ValidationError |
+| 23 | test_custom_limit | Custom limit enforced |
+| 24 | test_allows_within_limit | Requests within rate allowed |
+| 25 | test_blocks_over_limit | Requests over burst blocked |
+| 26 | test_refills_over_time | Tokens refill after wait |
+| 27 | test_independent_keys | Different keys have independent limits |
+| 28 | test_cleanup | Stale entries evicted |
+| 29 | test_valid_file | Valid JSON loaded correctly |
+| 30 | test_missing_file | Missing file returns default |
+| 31 | test_corrupted_backup | Corrupted file backed up, default returned |
+| 32 | test_empty_file | Empty file returns default |
+| 33 | test_creates_file | File created with correct content |
+| 34 | test_creates_parent_dirs | Parent directories auto-created |
+| 35 | test_roundtrip | Write then read preserves data |
+
+---
+
+## test_integration.py — 15 tests (NEW in v1.3)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_concurrent_budget_recording | 10 threads recording spending — no corruption |
+| 2 | test_concurrent_event_emission | 10 threads emitting events — no data loss |
+| 3 | test_concurrent_worker_memory_writes | 10 threads writing memory — valid JSON |
+| 4 | test_router_retry_then_fallback | 503 retried, then falls to next model |
+| 5 | test_workflow_node_timeout_recovery | Timed-out node fails gracefully |
+| 6 | test_budget_exhaustion_mid_workflow | Budget exhaustion doesn't crash workflow |
+| 7 | test_scheduler_worker_deleted | Deleted worker doesn't crash scheduler |
+| 8 | test_webhook_path_traversal_via_worker_name | Path traversal in worker name rejected |
+| 9 | test_dashboard_auth_bypass_attempts | Auth bypass returns 401 |
+| 10 | test_rate_limit_with_auth | Rate limit applies even with valid auth |
+| 11 | test_large_payload_rejected | >1MB payload returns 400 |
+| 12 | test_invalid_worker_name_rejected_across_systems | Scheduler rejects invalid names |
+| 13 | test_corrupted_worker_files_graceful | Corrupted JSON loads with empty defaults |
+| 14 | test_atomic_write_creates_valid_json | Multiple writes produce valid JSON |
+| 15 | test_roundtrip_json_integrity | Data survives write-read cycle |
 
 ---
 
@@ -603,4 +702,4 @@ Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 
 ---
 
-Total tests: **423** | All passing
+Total tests: **509** | All passing

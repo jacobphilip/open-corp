@@ -284,8 +284,9 @@ open-corp/
 │
 ├── framework/                   # Core framework code
 │   ├── exceptions.py            # Shared exceptions (BudgetExceeded, ModelUnavailable, RegistryError, MarketplaceError, etc.)
-│   ├── config.py                # Project configuration loader (charter.yaml + .env) with PromotionRules, LoggingConfig, RetentionConfig
-│   ├── log.py                   # Structured logging (setup_logging, get_logger — stdlib logging)
+│   ├── config.py                # Project configuration loader (charter.yaml + .env) with PromotionRules, LoggingConfig, RetentionConfig, SecurityConfig
+│   ├── log.py                   # Structured logging (setup_logging, get_logger, SecretFilter — stdlib logging)
+│   ├── validation.py            # Input validation: worker names, path traversal, payload size, rate limiting, safe JSON I/O
 │   ├── accountant.py            # Budget guardrail (runs before every API call)
 │   ├── router.py                # Model selection, OpenRouter integration, tier fallback
 │   ├── knowledge.py             # Knowledge base: chunking, keyword search, validation
@@ -320,14 +321,14 @@ open-corp/
 ├── workflows/                   # Example workflow definitions
 │   └── example_trading.yaml     # Parallel scan + recommendation DAG
 │
-├── tests/                       # 423 tests (pytest + respx)
+├── tests/                       # 509 tests (pytest + respx)
 │   ├── conftest.py              # Shared fixtures
-│   ├── test_config.py           # 17 tests
+│   ├── test_config.py           # 20 tests
 │   ├── test_accountant.py       # 12 tests
-│   ├── test_router.py           # 14 tests
+│   ├── test_router.py           # 23 tests
 │   ├── test_exceptions.py       # 9 tests
 │   ├── test_templates.py        # 5 tests
-│   ├── test_worker.py           # 30 tests
+│   ├── test_worker.py           # 33 tests
 │   ├── test_hr.py               # 36 tests
 │   ├── test_cli.py              # 65 tests
 │   ├── test_knowledge.py        # 23 tests
@@ -336,14 +337,16 @@ open-corp/
 │   ├── test_scheduler.py        # 13 tests
 │   ├── test_workflow.py         # 34 tests
 │   ├── test_db.py               # 12 tests
-│   ├── test_webhooks.py         # 22 tests
+│   ├── test_webhooks.py         # 25 tests
 │   ├── test_broker.py           # 16 tests
 │   ├── test_registry.py         # 15 tests
 │   ├── test_task_router.py      # 8 tests
 │   ├── test_marketplace.py      # 12 tests
-│   ├── test_logging.py          # 8 tests
+│   ├── test_logging.py          # 15 tests
 │   ├── test_housekeeping.py     # 14 tests
-│   └── test_dashboard.py        # 20 tests
+│   ├── test_dashboard.py        # 30 tests
+│   ├── test_validation.py       # 35 tests
+│   └── test_integration.py      # 15 tests
 │
 ├── projects/                    # YOUR projects go here
 │   └── .gitkeep
@@ -393,7 +396,8 @@ These principles are encoded in the `CLAUDE.md` file that your LLM reads automat
 | **v0.5** | Thread-safe DB, parallel workflows, webhook server, paper trading broker, daemon improvements; 252 tests |
 | **v1.0** | Multi-ops management, template marketplace, self-optimizing workers, smart task routing, MkDocs docs; 321 tests |
 | **v1.1** | Structured logging, data retention, workflow timeouts/retries, worker fire with cleanup, webhook security fixes; 388 tests |
-| **v1.2** (current) | Telegram bot parity (8 new commands), local web dashboard with HTML + JSON API; 423 tests |
+| **v1.2** | Telegram bot parity (8 new commands), local web dashboard with HTML + JSON API; 423 tests |
+| **v1.3** (current) | Security hardening: input validation, dashboard auth, rate limiting, router retry, secret redaction, atomic JSON writes; 509 tests |
 
 See [ROADMAP.md](ROADMAP.md) for full details.
 

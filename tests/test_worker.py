@@ -507,3 +507,32 @@ class TestMultiTurnChat:
         user_msg = request_body["messages"][1]["content"]
         assert "Q1" in user_msg
         assert "A1" in user_msg
+
+
+class TestWorkerDataIntegrity:
+    """Tests for corrupted file handling and atomic writes."""
+
+    def test_corrupted_memory_loads_empty(self, tmp_project, config):
+        """Worker with corrupted memory.json loads with empty list."""
+        _create_worker_files(tmp_project / "workers" / "corrupt1")
+        (tmp_project / "workers" / "corrupt1" / "memory.json").write_text("{broken!!!")
+        worker = Worker("corrupt1", tmp_project, config)
+        assert worker.memory == []
+
+    def test_corrupted_performance_loads_empty(self, tmp_project, config):
+        """Worker with corrupted performance.json loads with empty list."""
+        _create_worker_files(tmp_project / "workers" / "corrupt2")
+        (tmp_project / "workers" / "corrupt2" / "performance.json").write_text("{also broken")
+        worker = Worker("corrupt2", tmp_project, config)
+        assert worker.performance == []
+
+    def test_atomic_write_produces_valid_json(self, tmp_project, config):
+        """Multiple memory writes produce valid JSON on disk."""
+        _create_worker_files(tmp_project / "workers" / "atomic1")
+        worker = Worker("atomic1", tmp_project, config)
+        for i in range(5):
+            worker.update_memory("note", f"entry-{i}")
+        # Re-read from disk
+        saved = json.loads((tmp_project / "workers" / "atomic1" / "memory.json").read_text())
+        assert len(saved) == 5
+        assert saved[-1]["content"] == "entry-4"

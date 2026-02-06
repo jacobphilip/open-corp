@@ -9,10 +9,11 @@ from flask import Flask, request, jsonify
 
 from framework.config import ProjectConfig
 from framework.events import Event, EventLog
-from framework.exceptions import WebhookError
+from framework.exceptions import ValidationError, WebhookError
 from framework.log import get_logger
 from framework.router import Router
 from framework.scheduler import Scheduler, ScheduledTask
+from framework.validation import RateLimiter, validate_payload_size, validate_worker_name
 from framework.workflow import Workflow, WorkflowEngine
 
 logger = get_logger(__name__)
@@ -26,8 +27,24 @@ def create_webhook_app(config: ProjectConfig, accountant, router: Router,
 
     engine = WorkflowEngine(config, accountant, router, event_log)
 
+    rate_limiter = RateLimiter(
+        rate=config.security.webhook_rate_limit,
+        burst=config.security.webhook_rate_burst,
+    )
+
     @app.before_request
     def check_auth():
+        # Rate limiting (applies to all endpoints including health)
+        if not rate_limiter.allow(request.remote_addr or "unknown"):
+            return jsonify({"error": "rate limit exceeded"}), 429
+
+        # Payload size check for POST requests
+        if request.method == "POST" and request.content_length:
+            try:
+                validate_payload_size(request.get_data(), max_bytes=1_048_576)
+            except ValidationError:
+                return jsonify({"error": "payload too large"}), 400
+
         if request.endpoint == "health":
             return None  # skip auth for health
         token = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
@@ -76,6 +93,12 @@ def create_webhook_app(config: ProjectConfig, accountant, router: Router,
 
         if not worker_name:
             return jsonify({"error": "missing worker field"}), 400
+
+        # Validate worker name format
+        try:
+            validate_worker_name(worker_name)
+        except ValidationError as e:
+            return jsonify({"error": str(e)}), 400
 
         # Validate worker exists
         worker_dir = config.project_dir / "workers" / worker_name

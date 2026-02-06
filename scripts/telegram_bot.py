@@ -20,12 +20,13 @@ from telegram.ext import (
 from framework.accountant import Accountant
 from framework.config import ProjectConfig
 from framework.events import EventLog
-from framework.exceptions import BudgetExceeded, ConfigError, ModelUnavailable, WorkerNotFound
+from framework.exceptions import BudgetExceeded, ConfigError, ModelUnavailable, ValidationError, WorkerNotFound
 from framework.housekeeping import Housekeeper
 from framework.hr import HR
 from framework.router import Router
 from framework.scheduler import Scheduler
 from framework.task_router import TaskRouter
+from framework.validation import validate_worker_name
 from framework.worker import Worker
 from framework.workflow import WorkflowEngine
 
@@ -95,6 +96,12 @@ async def cmd_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     worker_name = context.args[0]
+    try:
+        validate_worker_name(worker_name)
+    except ValidationError:
+        await update.message.reply_text("Invalid worker name. Use letters, numbers, hyphens, underscores.")
+        return
+
     worker_dir = _project_dir / "workers" / worker_name
     if not worker_dir.exists():
         await update.message.reply_text(
@@ -146,6 +153,12 @@ async def cmd_fire(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     worker_name = context.args[0]
+    try:
+        validate_worker_name(worker_name)
+    except ValidationError:
+        await update.message.reply_text("Invalid worker name.")
+        return
+
     worker_dir = _project_dir / "workers" / worker_name
     if not worker_dir.exists():
         await update.message.reply_text(f"Worker '{worker_name}' not found.")
@@ -198,6 +211,11 @@ async def cmd_review(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     """Handle /review [worker_name] — team scorecard or individual."""
     if context.args:
         worker_name = context.args[0]
+        try:
+            validate_worker_name(worker_name)
+        except ValidationError:
+            await update.message.reply_text("Invalid worker name.")
+            return
         worker_dir = _project_dir / "workers" / worker_name
         if not worker_dir.exists():
             await update.message.reply_text(f"Worker '{worker_name}' not found.")
@@ -304,6 +322,11 @@ async def cmd_inspect(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     """Handle /inspect [worker_name] — project overview or worker detail."""
     if context.args:
         worker_name = context.args[0]
+        try:
+            validate_worker_name(worker_name)
+        except ValidationError:
+            await update.message.reply_text("Invalid worker name.")
+            return
         worker_dir = _project_dir / "workers" / worker_name
         if not worker_dir.exists():
             await update.message.reply_text(f"Worker '{worker_name}' not found.")

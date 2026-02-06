@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Generator
 
@@ -11,6 +12,9 @@ from framework.accountant import Accountant, BudgetStatus
 from framework.config import ProjectConfig
 from framework.exceptions import BudgetExceeded, ModelUnavailable
 from framework.log import get_logger
+
+# HTTP status codes that warrant a retry
+_RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
 
 logger = get_logger(__name__)
 
@@ -29,10 +33,16 @@ class Router:
         config: ProjectConfig,
         accountant: Accountant,
         api_key: str | None = None,
+        max_retries: int = 2,
+        retry_base_delay: float = 1.0,
+        retry_max_delay: float = 8.0,
     ):
         self.config = config
         self.accountant = accountant
         self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
+        self.retry_max_delay = retry_max_delay
         self._pricing_cache: dict[str, dict] | None = None
 
     def _headers(self) -> dict[str, str]:
@@ -129,18 +139,34 @@ class Router:
         self._pricing_cache = pricing
         return pricing
 
+    @staticmethod
+    def _is_retryable(error: Exception) -> bool:
+        """Check if an error is worth retrying."""
+        if isinstance(error, (httpx.ConnectError, httpx.TimeoutException)):
+            return True
+        if isinstance(error, httpx.HTTPStatusError):
+            return error.response.status_code in _RETRYABLE_STATUS_CODES
+        return False
+
     def chat(
         self,
         messages: list[dict],
         tier: str = "cheap",
         model: str | None = None,
         worker_name: str = "system",
+        max_tokens: int | None = None,
     ) -> dict:
         """Send a chat completion request. Returns {content, model_used, tokens, cost}.
 
         Checks budget, selects model with fallback, records spending.
+        Retries transient failures (429/502/503/504, ConnectError, TimeoutException)
+        with exponential backoff before falling through to the next model.
         """
         budget_status = self.accountant.pre_check()
+
+        # Use default max_tokens from config if not specified
+        if max_tokens is None:
+            max_tokens = getattr(self.config.worker_defaults, "default_max_tokens", None)
 
         # Build ordered list of models to try
         models_to_try: list[str] = []
@@ -165,12 +191,19 @@ class Router:
 
         last_error: Exception | None = None
         for candidate in models_to_try:
-            try:
-                return self._call_openrouter(candidate, messages, worker_name)
-            except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
-                logger.info("Tier fallback: %s failed (%s), trying next", candidate, e)
-                last_error = e
-                continue
+            for attempt in range(1 + self.max_retries):
+                try:
+                    return self._call_openrouter(candidate, messages, worker_name, max_tokens)
+                except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
+                    last_error = e
+                    if self._is_retryable(e) and attempt < self.max_retries:
+                        delay = min(self.retry_base_delay * (2 ** attempt), self.retry_max_delay)
+                        logger.info("Retry %d/%d for %s after %s (delay %.1fs)",
+                                    attempt + 1, self.max_retries, candidate, e, delay)
+                        time.sleep(delay)
+                        continue
+                    logger.info("Tier fallback: %s failed (%s), trying next", candidate, e)
+                    break  # fall to next model
 
         logger.warning("All models exhausted: tried=%s, last_error=%s", models_to_try, last_error)
         raise ModelUnavailable(
@@ -184,12 +217,15 @@ class Router:
         model: str,
         messages: list[dict],
         worker_name: str,
+        max_tokens: int | None = None,
     ) -> dict:
         """Make the actual API call to OpenRouter."""
         payload = {
             "model": model,
             "messages": messages,
         }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
 
         resp = httpx.post(
             OPENROUTER_API_URL,

@@ -1,6 +1,6 @@
 # Roadmap — open-corp
 
-Current version: **1.2.0**
+Current version: **1.3.0**
 
 ---
 
@@ -122,3 +122,19 @@ Status: **Complete**
 - [x] CLI dashboard command — `corp dashboard` with `--port` and `--host` options
 - [x] Package data — templates and static files included in setuptools build
 - [x] Tests — 423 tests, all passing
+
+---
+
+## v1.3.0 — Security Hardening
+
+Status: **Complete**
+
+- [x] Input validation module — `validate_worker_name()`, `validate_path_within()`, `validate_payload_size()`, `RateLimiter`, `safe_load_json()`, `safe_write_json()`
+- [x] Dashboard authentication — Bearer header + httponly cookie login, `hmac.compare_digest`
+- [x] Rate limiting — Token bucket per IP on webhooks and dashboard, configurable via `SecurityConfig`
+- [x] Router retry — Exponential backoff for 429/502/503/504, `max_retries`, `max_tokens` support
+- [x] Secret handling — `SecretFilter` redacts API keys/tokens in logs, `.env` permission warning, `chmod 600` on init
+- [x] DB integrity — Atomic JSON writes via tempfile+rename, corrupted file detection with `.corrupt` backup
+- [x] Worker name validation — Regex whitelist at all entry points (HR, scheduler, dashboard, webhooks, CLI, bot)
+- [x] `SecurityConfig` dataclass — `webhook_rate_limit`, `webhook_rate_burst`, `dashboard_rate_limit`, `dashboard_rate_burst`
+- [x] Tests — 509 tests, all passing

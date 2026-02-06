@@ -62,3 +62,10 @@ worker_defaults:
   max_context_tokens: 2000
   model: "deepseek/deepseek-chat"
   honest_ai: true         # NEVER fabricate data (non-negotiable)
+
+# Security settings (all optional, sensible defaults)
+security:
+  webhook_rate_limit: 10    # requests/sec per IP
+  webhook_rate_burst: 20    # burst capacity
+  dashboard_rate_limit: 30  # requests/sec per IP
+  dashboard_rate_burst: 60  # burst capacity

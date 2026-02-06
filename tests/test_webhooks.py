@@ -319,3 +319,52 @@ class TestPathTraversal:
                           headers=_auth_headers())
         assert resp.status_code == 400
         assert "within project" in resp.get_json()["error"]
+
+
+class TestWebhookRateLimit:
+    def test_rate_limit_blocks(self, tmp_project, config):
+        """Webhook rate limiter returns 429 after burst exhausted."""
+        config.security.webhook_rate_limit = 1.0
+        config.security.webhook_rate_burst = 2
+
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+        event_log = EventLog(tmp_project / "data" / "events.json")
+        scheduler = Scheduler(config, accountant, router, event_log,
+                              db_path=tmp_project / "data" / "scheduler.json")
+
+        with patch.dict(os.environ, {"WEBHOOK_API_KEY": "test-secret"}):
+            app = create_webhook_app(config, accountant, router, event_log, scheduler)
+            app.config["TESTING"] = True
+            client = app.test_client()
+
+        headers = {"Authorization": "Bearer test-secret"}
+        assert client.get("/health", headers=headers).status_code == 200
+        assert client.get("/health", headers=headers).status_code == 200
+        assert client.get("/health", headers=headers).status_code == 429
+
+    def test_payload_size_rejected(self, tmp_project, config):
+        """Webhook rejects payloads over 1MB."""
+        accountant = Accountant(config)
+        router = Router(config, accountant, api_key="test-key")
+        event_log = EventLog(tmp_project / "data" / "events.json")
+
+        with patch.dict(os.environ, {"WEBHOOK_API_KEY": "test-secret"}):
+            app = create_webhook_app(config, accountant, router, event_log)
+            app.config["TESTING"] = True
+            client = app.test_client()
+
+        large_data = "x" * (1_048_577)
+        resp = client.post("/events",
+                          data=large_data,
+                          content_type="application/json",
+                          headers={"Authorization": "Bearer test-secret"})
+        assert resp.status_code == 400
+
+    def test_worker_name_validated(self, webhook_env):
+        """Path traversal in worker name returns 400."""
+        client, _, _, _ = webhook_env
+        resp = client.post("/trigger/task",
+                          json={"worker": "../etc/passwd", "message": "evil"},
+                          headers=_auth_headers())
+        assert resp.status_code == 400

@@ -14,6 +14,7 @@ from framework.events import Event, EventLog
 from framework.exceptions import SchedulerError, WorkerNotFound
 from framework.log import get_logger
 from framework.router import Router
+from framework.validation import validate_worker_name
 from framework.worker import Worker
 
 logger = get_logger(__name__)
@@ -55,7 +56,8 @@ class Scheduler:
         return self._scheduler
 
     def add_task(self, task: ScheduledTask) -> ScheduledTask:
-        """Add a scheduled task. Validates type and worker existence."""
+        """Add a scheduled task. Validates type, worker name, and worker existence."""
+        validate_worker_name(task.worker_name)
         if task.schedule_type not in VALID_SCHEDULE_TYPES:
             raise SchedulerError(
                 task.id or "new",

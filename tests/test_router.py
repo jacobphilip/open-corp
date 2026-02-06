@@ -45,14 +45,13 @@ class TestRouter:
         assert accountant.today_spent() > 0
 
     def test_model_fallback_on_error(self, config, accountant):
-        """When first model returns 503, falls back to next model in tier."""
-        router = Router(config, accountant, api_key="test-key")
+        """When first model returns 503 through all retries, falls back to next model."""
+        # max_retries=0 to skip retries and test pure fallback
+        router = Router(config, accountant, api_key="test-key", max_retries=0)
         messages = [{"role": "user", "content": "Hello"}]
 
-        call_count = 0
-
         with respx.mock:
-            # First model fails with 503
+            # First model fails with 503, second succeeds
             respx.post(OPENROUTER_API_URL).mock(
                 side_effect=[
                     httpx.Response(503, text="Service Unavailable"),
@@ -104,6 +103,147 @@ class TestRouter:
             result = router.chat(messages, tier="cheap", model="custom/model")
 
         assert result["model_used"] == "custom/model"
+
+    def test_retry_on_503(self, config, accountant):
+        """503 is retried before falling back."""
+        router = Router(config, accountant, api_key="test-key",
+                        max_retries=1, retry_base_delay=0.01)
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                side_effect=[
+                    httpx.Response(503, text="Down"),
+                    httpx.Response(200, json=_mock_openrouter_response("Retry worked!")),
+                ]
+            )
+            result = router.chat([{"role": "user", "content": "hi"}], tier="cheap")
+
+        assert result["content"] == "Retry worked!"
+        assert result["model_used"] == "deepseek/deepseek-chat"
+
+    def test_retry_on_429(self, config, accountant):
+        """429 rate limit is retried."""
+        router = Router(config, accountant, api_key="test-key",
+                        max_retries=1, retry_base_delay=0.01)
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                side_effect=[
+                    httpx.Response(429, text="Rate limited"),
+                    httpx.Response(200, json=_mock_openrouter_response("OK")),
+                ]
+            )
+            result = router.chat([{"role": "user", "content": "hi"}], tier="cheap")
+        assert result["content"] == "OK"
+
+    def test_retry_on_timeout(self, config, accountant):
+        """TimeoutException is retried."""
+        router = Router(config, accountant, api_key="test-key",
+                        max_retries=1, retry_base_delay=0.01)
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                side_effect=[
+                    httpx.TimeoutException("timeout"),
+                    httpx.Response(200, json=_mock_openrouter_response("OK")),
+                ]
+            )
+            result = router.chat([{"role": "user", "content": "hi"}], tier="cheap")
+        assert result["content"] == "OK"
+
+    def test_no_retry_on_400(self, config, accountant):
+        """400 is not retried — falls through to next model immediately."""
+        router = Router(config, accountant, api_key="test-key",
+                        max_retries=2, retry_base_delay=0.01)
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                side_effect=[
+                    httpx.Response(400, text="Bad request"),
+                    httpx.Response(200, json=_mock_openrouter_response("OK")),
+                ]
+            )
+            result = router.chat([{"role": "user", "content": "hi"}], tier="cheap")
+        # Should fall to second model immediately (no retries)
+        assert result["model_used"] == "mistralai/mistral-tiny"
+
+    def test_no_retry_on_401(self, config, accountant):
+        """401 is not retried."""
+        router = Router(config, accountant, api_key="test-key",
+                        max_retries=2, retry_base_delay=0.01)
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                side_effect=[
+                    httpx.Response(401, text="Unauthorized"),
+                    httpx.Response(200, json=_mock_openrouter_response("OK")),
+                ]
+            )
+            result = router.chat([{"role": "user", "content": "hi"}], tier="cheap")
+        assert result["model_used"] == "mistralai/mistral-tiny"
+
+    def test_max_retries_zero(self, config, accountant):
+        """max_retries=0 disables retries entirely."""
+        router = Router(config, accountant, api_key="test-key",
+                        max_retries=0, retry_base_delay=0.01)
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                side_effect=[
+                    httpx.Response(503, text="Down"),
+                    httpx.Response(200, json=_mock_openrouter_response("OK")),
+                ]
+            )
+            result = router.chat([{"role": "user", "content": "hi"}], tier="cheap")
+        # No retry, falls to second model
+        assert result["model_used"] == "mistralai/mistral-tiny"
+
+    def test_max_tokens_in_payload(self, config, accountant):
+        """max_tokens is included in the API payload when specified."""
+        router = Router(config, accountant, api_key="test-key")
+
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=httpx.Response(200, json=_mock_openrouter_response("OK"))
+            )
+            router.chat([{"role": "user", "content": "hi"}], tier="cheap", max_tokens=500)
+
+        request_body = json.loads(route.calls[0].request.content)
+        assert request_body["max_tokens"] == 500
+
+    def test_max_tokens_absent_by_default(self, config, accountant):
+        """max_tokens is not in payload when not specified."""
+        router = Router(config, accountant, api_key="test-key")
+
+        with respx.mock:
+            route = respx.post(OPENROUTER_API_URL).mock(
+                return_value=httpx.Response(200, json=_mock_openrouter_response("OK"))
+            )
+            router.chat([{"role": "user", "content": "hi"}], tier="cheap")
+
+        request_body = json.loads(route.calls[0].request.content)
+        assert "max_tokens" not in request_body
+
+    def test_exponential_delay(self, config, accountant):
+        """Retry delay increases exponentially."""
+        router = Router(config, accountant, api_key="test-key",
+                        max_retries=2, retry_base_delay=0.01, retry_max_delay=1.0)
+
+        with respx.mock:
+            respx.post(OPENROUTER_API_URL).mock(
+                side_effect=[
+                    httpx.Response(503, text="Down"),
+                    httpx.Response(503, text="Down"),
+                    httpx.Response(200, json=_mock_openrouter_response("OK")),
+                ]
+            )
+            start = __import__("time").monotonic()
+            result = router.chat([{"role": "user", "content": "hi"}], tier="cheap")
+            elapsed = __import__("time").monotonic() - start
+
+        assert result["content"] == "OK"
+        # Should have waited at least base_delay * (1 + 2) = 0.03 seconds
+        assert elapsed >= 0.02
 
     def test_caution_prefers_cheap(self, config, accountant):
         """Under CAUTION budget, premium tier is downgraded."""

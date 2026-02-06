@@ -1,5 +1,6 @@
 """Project configuration loader — reads charter.yaml + .env."""
 
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,6 +36,7 @@ class WorkerDefaults:
     model: str = "deepseek/deepseek-chat"
     honest_ai: bool = True
     max_history_messages: int = 50
+    default_max_tokens: int | None = None
 
 
 @dataclass
@@ -60,6 +62,14 @@ class RetentionConfig:
 
 
 @dataclass
+class SecurityConfig:
+    webhook_rate_limit: float = 10.0
+    webhook_rate_burst: int = 20
+    dashboard_rate_limit: float = 30.0
+    dashboard_rate_burst: int = 60
+
+
+@dataclass
 class GitConfig:
     auto_commit: bool = True
     auto_push: bool = True
@@ -80,6 +90,7 @@ class ProjectConfig:
     promotion_rules: PromotionRules = field(default_factory=PromotionRules)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     retention: RetentionConfig = field(default_factory=RetentionConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
     marketplace_url: str = ""
     board_enabled: bool = False
 
@@ -92,6 +103,17 @@ class ProjectConfig:
         env_file = project_dir / ".env"
         if env_file.exists():
             load_dotenv(env_file)
+            # Warn if .env is group/other readable
+            try:
+                mode = env_file.stat().st_mode
+                if mode & 0o077:
+                    warnings.warn(
+                        f".env file at {env_file} is group/other readable (mode {oct(mode)}). "
+                        "Run: chmod 600 .env",
+                        stacklevel=2,
+                    )
+            except OSError:
+                pass
 
         # Load charter.yaml
         charter_path = project_dir / "charter.yaml"
@@ -169,12 +191,15 @@ class ProjectConfig:
 
         # Parse worker defaults
         wd_raw = raw.get("worker_defaults", {})
+        default_max_tokens_raw = wd_raw.get("default_max_tokens")
+        default_max_tokens = int(default_max_tokens_raw) if default_max_tokens_raw is not None else None
         worker_defaults = WorkerDefaults(
             starting_level=wd_raw.get("starting_level", 1),
             max_context_tokens=wd_raw.get("max_context_tokens", 2000),
             model=wd_raw.get("model", "deepseek/deepseek-chat"),
             honest_ai=wd_raw.get("honest_ai", True),
             max_history_messages=wd_raw.get("max_history_messages", 50),
+            default_max_tokens=default_max_tokens,
         )
 
         # Promotion rules
@@ -205,6 +230,15 @@ class ProjectConfig:
         # Marketplace
         marketplace_url = raw.get("marketplace", {}).get("registry_url", "")
 
+        # Security config
+        sec_raw = raw.get("security", {})
+        security = SecurityConfig(
+            webhook_rate_limit=float(sec_raw.get("webhook_rate_limit", 10.0)),
+            webhook_rate_burst=int(sec_raw.get("webhook_rate_burst", 20)),
+            dashboard_rate_limit=float(sec_raw.get("dashboard_rate_limit", 30.0)),
+            dashboard_rate_burst=int(sec_raw.get("dashboard_rate_burst", 60)),
+        )
+
         # Board
         board_enabled = raw.get("board", {}).get("enabled", False)
 
@@ -220,6 +254,7 @@ class ProjectConfig:
             promotion_rules=promotion_rules,
             logging=logging_config,
             retention=retention,
+            security=security,
             marketplace_url=marketplace_url,
             board_enabled=board_enabled,
         )

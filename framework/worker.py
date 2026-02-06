@@ -10,6 +10,7 @@ from framework.config import ProjectConfig
 from framework.exceptions import WorkerNotFound
 from framework.knowledge import KnowledgeBase, search_knowledge
 from framework.router import Router
+from framework.validation import safe_load_json, safe_write_json
 
 # Seniority level → tier mapping
 LEVEL_TIER_MAP = {
@@ -45,13 +46,7 @@ class Worker:
         return path.read_text() if path.exists() else f"Worker: {self.name}"
 
     def _load_memory(self) -> list[dict]:
-        path = self.worker_dir / "memory.json"
-        if path.exists():
-            try:
-                return json.loads(path.read_text())
-            except (json.JSONDecodeError, OSError):
-                return []
-        return []
+        return safe_load_json(self.worker_dir / "memory.json", default=[])
 
     def _load_skills(self) -> dict:
         path = self.worker_dir / "skills.yaml"
@@ -72,13 +67,7 @@ class Worker:
         return {}
 
     def _load_performance(self) -> list[dict]:
-        path = self.worker_dir / "performance.json"
-        if path.exists():
-            try:
-                return json.loads(path.read_text())
-            except (json.JSONDecodeError, OSError):
-                return []
-        return []
+        return safe_load_json(self.worker_dir / "performance.json", default=[])
 
     def _load_knowledge(self) -> KnowledgeBase:
         kb_dir = self.worker_dir / "knowledge_base"
@@ -261,8 +250,7 @@ class Worker:
         self._save_memory()
 
     def _save_memory(self) -> None:
-        path = self.worker_dir / "memory.json"
-        path.write_text(json.dumps(self.memory, indent=2))
+        safe_write_json(self.worker_dir / "memory.json", self.memory)
 
     def performance_summary(self) -> dict:
         """Aggregate performance stats.
@@ -300,5 +288,4 @@ class Worker:
             "result": result,
             "rating": rating,
         })
-        path = self.worker_dir / "performance.json"
-        path.write_text(json.dumps(self.performance, indent=2))
+        safe_write_json(self.worker_dir / "performance.json", self.performance)

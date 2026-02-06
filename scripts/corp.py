@@ -15,9 +15,10 @@ from framework.events import EventLog
 from framework.log import setup_logging
 from framework.exceptions import (
     BrokerError, BudgetExceeded, ConfigError, MarketplaceError, ModelUnavailable,
-    RegistryError, SchedulerError, TrainingError, WebhookError, WorkerNotFound,
-    WorkflowError,
+    RegistryError, SchedulerError, TrainingError, ValidationError, WebhookError,
+    WorkerNotFound, WorkflowError,
 )
+from framework.validation import validate_worker_name
 from framework.hr import HR
 from framework.registry import OperationRegistry
 from framework.router import Router
@@ -170,6 +171,12 @@ def chat(ctx, worker_name):
         config, accountant, router, _ = _load_project(ctx.obj["project_dir"])
     except ConfigError as e:
         click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    try:
+        validate_worker_name(worker_name)
+    except ValidationError as e:
+        click.echo(f"Invalid worker name: {e}", err=True)
         sys.exit(1)
 
     try:
@@ -366,10 +373,14 @@ def init(ctx):
 
     charter_path.write_text(yaml.dump(charter, default_flow_style=False, sort_keys=False))
 
-    # Write .env
+    # Write .env with restrictive permissions
     env_path = project_dir / ".env"
     env_lines = [f"OPENROUTER_API_KEY={api_key}"]
     env_path.write_text("\n".join(env_lines) + "\n")
+    try:
+        env_path.chmod(0o600)
+    except OSError:
+        pass
 
     # Create directories
     for dirname in ("workers", "templates", "data"):
@@ -520,6 +531,12 @@ def inspect(ctx, worker_name):
     else:
         # Worker detail
         try:
+            validate_worker_name(worker_name)
+        except ValidationError as e:
+            click.echo(f"Invalid worker name: {e}", err=True)
+            sys.exit(1)
+
+        try:
             worker = Worker(worker_name, config.project_dir, config)
         except WorkerNotFound:
             click.echo(f"Worker '{worker_name}' not found.", err=True)
@@ -595,6 +612,12 @@ def review(ctx, worker_name, auto_review):
         return
 
     if worker_name:
+        try:
+            validate_worker_name(worker_name)
+        except ValidationError as e:
+            click.echo(f"Invalid worker name: {e}", err=True)
+            sys.exit(1)
+
         try:
             worker = Worker(worker_name, config.project_dir, config)
         except WorkerNotFound:
@@ -1321,6 +1344,12 @@ def fire(ctx, worker_name, yes):
         click.echo(f"Config error: {e}", err=True)
         sys.exit(1)
 
+    try:
+        validate_worker_name(worker_name)
+    except ValidationError as e:
+        click.echo(f"Invalid worker name: {e}", err=True)
+        sys.exit(1)
+
     if not yes:
         if not click.confirm(f"Fire '{worker_name}'? This deletes all worker data"):
             click.echo("Aborted.")
@@ -1424,10 +1453,19 @@ def validate(ctx):
 @click.pass_context
 def dashboard(ctx, port, host):
     """Start the local web dashboard."""
+    import os as _os
+
     try:
         config, accountant, router, hr = _load_project(ctx.obj["project_dir"])
     except ConfigError as e:
         click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    # Warn if exposing dashboard without auth
+    local_hosts = ("127.0.0.1", "localhost", "::1")
+    if host not in local_hosts and not _os.getenv("DASHBOARD_TOKEN", ""):
+        click.echo("Error: Exposing dashboard on non-local host without DASHBOARD_TOKEN.", err=True)
+        click.echo("Set DASHBOARD_TOKEN in .env or use --host 127.0.0.1", err=True)
         sys.exit(1)
 
     from framework.dashboard import create_dashboard_app

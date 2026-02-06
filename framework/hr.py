@@ -10,6 +10,7 @@ from framework.config import ProjectConfig, PromotionRules
 from framework.exceptions import TrainingError, WorkerNotFound
 from framework.knowledge import KnowledgeBase, KnowledgeEntry, chunk_text, validate_knowledge
 from framework.log import get_logger
+from framework.validation import validate_worker_name
 from framework.worker import Worker
 
 logger = get_logger(__name__)
@@ -27,6 +28,7 @@ class HR:
 
     def hire_from_template(self, template_name: str, worker_name: str) -> Worker:
         """Copy a template directory to workers/ and return the new Worker."""
+        validate_worker_name(worker_name)
         template_dir = self.templates_dir / template_name
         if not template_dir.exists():
             available = [d.name for d in self.templates_dir.iterdir() if d.is_dir()]
@@ -53,6 +55,7 @@ class HR:
         description: str = "",
     ) -> Worker:
         """Create a worker from scratch with generated default files."""
+        validate_worker_name(worker_name)
         worker_dir = self.workers_dir / worker_name
         if worker_dir.exists():
             raise FileExistsError(f"Worker '{worker_name}' already exists")
@@ -127,6 +130,7 @@ class HR:
         Returns:
             {removed_tasks: int, warnings: list[str]}
         """
+        validate_worker_name(worker_name)
         worker_dir = self.workers_dir / worker_name
         if not worker_dir.exists():
             raise WorkerNotFound(worker_name)
@@ -173,6 +177,7 @@ class HR:
 
     def demote(self, worker_name: str) -> int:
         """Decrement a worker's seniority level. Returns new level (min 1)."""
+        validate_worker_name(worker_name)
         worker_dir = self.workers_dir / worker_name
         if not worker_dir.exists():
             raise WorkerNotFound(worker_name)
@@ -251,6 +256,7 @@ class HR:
 
     def promote(self, worker_name: str) -> int:
         """Increment a worker's seniority level. Returns new level."""
+        validate_worker_name(worker_name)
         worker_dir = self.workers_dir / worker_name
         if not worker_dir.exists():
             raise WorkerNotFound(worker_name)

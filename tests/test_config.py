@@ -1,9 +1,12 @@
 """Tests for framework/config.py."""
 
+import os
+import warnings
+
 import pytest
 import yaml
 
-from framework.config import LoggingConfig, ProjectConfig, RetentionConfig
+from framework.config import LoggingConfig, ProjectConfig, RetentionConfig, SecurityConfig
 from framework.exceptions import ConfigError
 
 
@@ -179,3 +182,71 @@ class TestProjectConfig:
         rc = RetentionConfig()
         assert rc.events_days == 90
         assert rc.performance_max == 100
+
+    def test_security_config_defaults(self, tmp_path):
+        """SecurityConfig defaults when section missing."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.security.webhook_rate_limit == 10.0
+        assert config.security.webhook_rate_burst == 20
+        assert config.security.dashboard_rate_limit == 30.0
+        assert config.security.dashboard_rate_burst == 60
+
+    def test_security_config_from_charter(self, tmp_path):
+        """SecurityConfig parsed from charter.yaml security section."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+            "security": {
+                "webhook_rate_limit": 5.0,
+                "webhook_rate_burst": 10,
+                "dashboard_rate_limit": 15.0,
+                "dashboard_rate_burst": 30,
+            },
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        config = ProjectConfig.load(tmp_path)
+        assert config.security.webhook_rate_limit == 5.0
+        assert config.security.webhook_rate_burst == 10
+        assert config.security.dashboard_rate_limit == 15.0
+        assert config.security.dashboard_rate_burst == 30
+
+    def test_env_permission_warning(self, tmp_path):
+        """.env with group/other readable permissions emits warning."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        env_file = tmp_path / ".env"
+        env_file.write_text("API_KEY=test")
+        env_file.chmod(0o644)  # group/other readable
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            ProjectConfig.load(tmp_path)
+
+        permission_warnings = [x for x in w if "group/other readable" in str(x.message)]
+        assert len(permission_warnings) == 1
+
+    def test_env_secure_permissions_no_warning(self, tmp_path):
+        """.env with 600 permissions does not emit warning."""
+        charter = {
+            "project": {"name": "X", "owner": "Y", "mission": "Z"},
+            "budget": {"daily_limit": 5.0},
+        }
+        (tmp_path / "charter.yaml").write_text(yaml.dump(charter))
+        env_file = tmp_path / ".env"
+        env_file.write_text("API_KEY=test")
+        env_file.chmod(0o600)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            ProjectConfig.load(tmp_path)
+
+        permission_warnings = [x for x in w if "group/other readable" in str(x.message)]
+        assert len(permission_warnings) == 0

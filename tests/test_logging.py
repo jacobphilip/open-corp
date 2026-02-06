@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from framework.log import get_logger, setup_logging
+from framework.log import SecretFilter, get_logger, setup_logging
 from framework.router import OPENROUTER_API_URL
 
 
@@ -129,3 +129,75 @@ class TestIntegrationLogging:
         messages = [r.message.lower() for r in caplog.records]
         assert any("workflow started" in m for m in messages)
         assert any("workflow completed" in m for m in messages)
+
+
+class TestSecretFilter:
+    """Tests for SecretFilter log redaction."""
+
+    def _make_record(self, msg, *args):
+        """Create a LogRecord for testing."""
+        record = logging.LogRecord(
+            name="test", level=logging.INFO, pathname="", lineno=0,
+            msg=msg, args=args if args else None, exc_info=None,
+        )
+        return record
+
+    def test_redacts_openrouter_api_key(self):
+        """OpenRouter API key (sk-or-...) is redacted."""
+        f = SecretFilter()
+        record = self._make_record("Key is sk-or-v1-abcdef1234567890abcdef")
+        f.filter(record)
+        assert "sk-or-" not in record.msg
+        assert "***REDACTED***" in record.msg
+
+    def test_redacts_generic_api_key(self):
+        """Generic API key (sk-...) is redacted."""
+        f = SecretFilter()
+        record = self._make_record("Key is sk-abcdefghij1234567890ab")
+        f.filter(record)
+        assert "sk-abcdef" not in record.msg
+        assert "***REDACTED***" in record.msg
+
+    def test_redacts_bearer_token(self):
+        """Bearer token is redacted."""
+        f = SecretFilter()
+        record = self._make_record("Auth: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6")
+        f.filter(record)
+        assert "eyJhbGci" not in record.msg
+        assert "***REDACTED***" in record.msg
+
+    def test_redacts_env_var_assignment(self):
+        """Environment variable assignments with secrets are redacted."""
+        f = SecretFilter()
+        record = self._make_record("Setting API_KEY=mysecretvalue123")
+        f.filter(record)
+        assert "mysecretvalue" not in record.msg
+        assert "***REDACTED***" in record.msg
+
+    def test_leaves_normal_messages(self):
+        """Normal log messages are not modified."""
+        f = SecretFilter()
+        record = self._make_record("Worker alice completed task successfully")
+        f.filter(record)
+        assert record.msg == "Worker alice completed task successfully"
+
+    def test_redacts_in_args(self):
+        """Secrets in %-format args are also redacted."""
+        f = SecretFilter()
+        record = self._make_record("Using key %s", "sk-or-v1-abcdefghij1234567890ab")
+        f.filter(record)
+        assert "sk-or-" not in record.args[0]
+        assert "***REDACTED***" in record.args[0]
+
+    def test_setup_logging_adds_secret_filter(self):
+        """setup_logging with redact_secrets=True adds SecretFilter."""
+        root = logging.getLogger("open-corp")
+        root.handlers.clear()
+        root.filters.clear()
+
+        setup_logging(redact_secrets=True)
+        assert any(isinstance(f, SecretFilter) for f in root.filters)
+
+        # Cleanup
+        root.handlers.clear()
+        root.filters.clear()

@@ -5,6 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.3.0] — 2026-02-05
+
+### Added
+- **framework/validation.py** — Input validation module: `validate_worker_name()` (regex whitelist), `validate_path_within()` (path traversal guard), `validate_payload_size()` (1MB default), `RateLimiter` (token bucket, thread-safe, per-IP), `safe_load_json()` (corruption detection + `.corrupt` backup), `safe_write_json()` (atomic write via tempfile + rename)
+- **framework/config.py** — `SecurityConfig` dataclass with `webhook_rate_limit`, `webhook_rate_burst`, `dashboard_rate_limit`, `dashboard_rate_burst`; `.env` file permission warning when group/other readable; `default_max_tokens` on `WorkerDefaults`
+- **framework/log.py** — `SecretFilter(logging.Filter)` redacts API keys (`sk-or-*`, `sk-*`), Bearer tokens, and env var assignments from log output; applied automatically in `setup_logging(redact_secrets=True)`
+- **framework/exceptions.py** — `ValidationError(reason, suggestion)` exception class
+- **framework/dashboard.py** — Authentication via Bearer header or httponly cookie; `/login` route with `hmac.compare_digest`; rate limiting via `RateLimiter`; worker name validation
+- **framework/webhooks.py** — Rate limiting per IP, payload size validation (1MB max), worker name validation in `/trigger/task`
+- **framework/router.py** — Retry with exponential backoff for transient errors (429/502/503/504, `ConnectError`, `TimeoutException`); `max_retries`, `retry_base_delay`, `retry_max_delay` params; `max_tokens` support in API calls
+- **tests/test_validation.py** — 35 tests for validation module
+- **tests/test_integration.py** — 15 tests for concurrency, error recovery, security, and data integrity
+- **tests/test_dashboard.py** — +10 auth tests (bearer, cookie, login, rate limit, httponly flag, worker name validation)
+- **tests/test_router.py** — +9 retry/max_tokens tests (503, 429, timeout, 400/401 no-retry, exponential delay, max_retries=0, max_tokens payload)
+- **tests/test_config.py** — +3 tests (SecurityConfig defaults, SecurityConfig from charter, .env permission warning)
+- **tests/test_logging.py** — +7 tests (SecretFilter redacts API keys, bearer tokens, env vars, args; leaves normal messages; setup adds filter)
+- **tests/test_webhooks.py** — +3 tests (rate limit blocks, payload size rejected, worker name validated)
+- **tests/test_worker.py** — +3 tests (corrupted memory/performance loads empty, atomic write valid JSON)
+- **charter.yaml** — `security:` section with rate limit defaults
+
+### Changed
+- `framework/worker.py` — JSON I/O uses `safe_load_json()` / `safe_write_json()` for corruption resilience and atomic writes
+- `framework/hr.py` — `validate_worker_name()` in hire, fire, promote, demote
+- `framework/scheduler.py` — `validate_worker_name()` in `add_task()`
+- `scripts/corp.py` — Worker name validation in chat, fire, inspect, review; `.env` created with `chmod 600`; non-local dashboard host warning
+- `scripts/telegram_bot.py` — Worker name validation in /chat, /fire, /review, /inspect
+- Total test count: 423 → 509
+
+---
+
 ## [1.2.0] — 2026-02-05
 
 ### Added
