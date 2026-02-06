@@ -1,0 +1,16 @@
+name: daily-trading-check
+description: Parallel market scan with combined recommendation
+
+nodes:
+  scan_watchlist:
+    worker: trader
+    message: "List 3 stocks worth watching today with reasoning"
+
+  analyze_market:
+    worker: trader
+    message: "Describe current market conditions in 2 sentences"
+
+  recommend:
+    worker: trader
+    message: "Given watchlist: {scan_watchlist.output}\nMarket: {analyze_market.output}\nRecommend 1 trade with entry, stop-loss, and target."
+    depends_on: [scan_watchlist, analyze_market]
