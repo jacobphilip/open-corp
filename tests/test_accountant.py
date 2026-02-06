@@ -1,5 +1,7 @@
 """Tests for framework/accountant.py."""
 
+import threading
+
 import pytest
 
 from framework.accountant import Accountant, BudgetStatus
@@ -76,3 +78,67 @@ class TestAccountant:
         assert report["by_model"]["model-b"] == pytest.approx(0.20)
         assert report["total_tokens_in"] == 450
         assert report["total_tokens_out"] == 225
+
+
+class TestAccountantThreadSafety:
+    def test_concurrent_writes(self, accountant):
+        """10 threads recording calls simultaneously — no corruption."""
+        errors = []
+
+        def record(i):
+            try:
+                accountant.record_call(f"model-{i}", 10, 5, 0.01, f"worker-{i}")
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=record, args=(i,)) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        assert accountant.today_spent() == pytest.approx(0.10)
+
+    def test_concurrent_reads_during_writes(self, accountant):
+        """Readers get consistent data while writers are active."""
+        accountant.record_call("m", 10, 5, 1.00, "w")
+        errors = []
+
+        def reader():
+            try:
+                spent = accountant.today_spent()
+                assert spent >= 1.00  # at least the seed
+            except Exception as e:
+                errors.append(e)
+
+        def writer(i):
+            try:
+                accountant.record_call("m", 10, 5, 0.01, f"w-{i}")
+            except Exception as e:
+                errors.append(e)
+
+        threads = (
+            [threading.Thread(target=reader) for _ in range(5)]
+            + [threading.Thread(target=writer, args=(i,)) for i in range(5)]
+        )
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+
+    def test_lock_prevents_corruption(self, accountant):
+        """After concurrent ops, call count matches expected."""
+        def record(i):
+            accountant.record_call("m", 10, 5, 0.001, f"w-{i}")
+
+        threads = [threading.Thread(target=record, args=(i,)) for i in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        report = accountant.daily_report()
+        assert report["call_count"] == 20

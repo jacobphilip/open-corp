@@ -4,9 +4,10 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
-from tinydb import TinyDB, Query
+from tinydb import Query
 
 from framework.config import ProjectConfig
+from framework.db import get_db
 from framework.exceptions import BudgetExceeded
 
 
@@ -26,8 +27,7 @@ class Accountant:
         self.budget = config.budget
         if db_path is None:
             db_path = config.project_dir / "data" / "spending.json"
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = TinyDB(db_path)
+        self.db, self._db_lock = get_db(db_path)
         self.table = self.db.table("spending")
 
     def _today(self) -> str:
@@ -37,7 +37,8 @@ class Accountant:
     def today_spent(self) -> float:
         """Sum of today's costs."""
         Record = Query()
-        records = self.table.search(Record.date == self._today())
+        with self._db_lock:
+            records = self.table.search(Record.date == self._today())
         return sum(r.get("cost", 0.0) for r in records)
 
     def _usage_ratio(self) -> float:
@@ -85,20 +86,22 @@ class Accountant:
         worker: str = "system",
     ) -> None:
         """Record an API call to spending ledger."""
-        self.table.insert({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "date": self._today(),
-            "model": model,
-            "tokens_in": tokens_in,
-            "tokens_out": tokens_out,
-            "cost": cost,
-            "worker": worker,
-        })
+        with self._db_lock:
+            self.table.insert({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "date": self._today(),
+                "model": model,
+                "tokens_in": tokens_in,
+                "tokens_out": tokens_out,
+                "cost": cost,
+                "worker": worker,
+            })
 
     def daily_report(self) -> dict:
         """Breakdown of today's spending by worker and model."""
         Record = Query()
-        records = self.table.search(Record.date == self._today())
+        with self._db_lock:
+            records = self.table.search(Record.date == self._today())
 
         by_worker: dict[str, float] = {}
         by_model: dict[str, float] = {}

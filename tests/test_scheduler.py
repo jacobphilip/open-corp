@@ -1,6 +1,7 @@
 """Tests for framework/scheduler.py — scheduled task CRUD and execution."""
 
 import json
+import threading
 
 import httpx
 import pytest
@@ -152,3 +153,82 @@ class TestScheduler:
         scheduler, _, _ = scheduler_env
         result = scheduler._execute_task("nonexistent")
         assert result is None
+
+
+class TestSchedulerThreadSafety:
+    def test_concurrent_writes(self, scheduler_env):
+        """10 threads adding tasks simultaneously — no corruption."""
+        scheduler, _, _ = scheduler_env
+        errors = []
+
+        def add_task(i):
+            try:
+                scheduler.add_task(ScheduledTask(
+                    worker_name="alice", message=f"task-{i}",
+                    schedule_type="interval", schedule_value="60",
+                ))
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=add_task, args=(i,)) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        assert len(scheduler.list_tasks()) == 10
+
+    def test_concurrent_reads_during_writes(self, scheduler_env):
+        """Readers get consistent data while writers are active."""
+        scheduler, _, _ = scheduler_env
+        scheduler.add_task(ScheduledTask(
+            worker_name="alice", message="seed",
+            schedule_type="interval", schedule_value="60",
+        ))
+        errors = []
+
+        def reader():
+            try:
+                tasks = scheduler.list_tasks()
+                assert len(tasks) >= 1
+            except Exception as e:
+                errors.append(e)
+
+        def writer(i):
+            try:
+                scheduler.add_task(ScheduledTask(
+                    worker_name="alice", message=f"task-{i}",
+                    schedule_type="interval", schedule_value="60",
+                ))
+            except Exception as e:
+                errors.append(e)
+
+        threads = (
+            [threading.Thread(target=reader) for _ in range(5)]
+            + [threading.Thread(target=writer, args=(i,)) for i in range(5)]
+        )
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+
+    def test_lock_prevents_corruption(self, scheduler_env):
+        """After concurrent ops, task count matches expected."""
+        scheduler, _, _ = scheduler_env
+
+        def add_task(i):
+            scheduler.add_task(ScheduledTask(
+                worker_name="alice", message=f"task-{i}",
+                schedule_type="interval", schedule_value="60",
+            ))
+
+        threads = [threading.Thread(target=add_task, args=(i,)) for i in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(scheduler.list_tasks()) == 20

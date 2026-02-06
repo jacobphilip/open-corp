@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from tinydb import TinyDB, Query
+from tinydb import Query
+
+from framework.db import get_db
 
 
 @dataclass
@@ -21,8 +23,7 @@ class EventLog:
 
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = TinyDB(str(self.db_path))
+        self._db, self._db_lock = get_db(self.db_path)
         self._handlers: dict[str, list[Callable]] = {}
 
     def emit(self, event: Event) -> None:
@@ -36,7 +37,8 @@ class EventLog:
             "data": event.data,
             "timestamp": event.timestamp,
         }
-        self._db.insert(record)
+        with self._db_lock:
+            self._db.insert(record)
 
         # Dispatch to type-specific handlers
         for handler in self._handlers.get(event.type, []):
@@ -72,13 +74,14 @@ class EventLog:
         if source:
             conditions.append(Q.source == source)
 
-        if conditions:
-            combined = conditions[0]
-            for c in conditions[1:]:
-                combined = combined & c
-            results = self._db.search(combined)
-        else:
-            results = self._db.all()
+        with self._db_lock:
+            if conditions:
+                combined = conditions[0]
+                for c in conditions[1:]:
+                    combined = combined & c
+                results = self._db.search(combined)
+            else:
+                results = self._db.all()
 
         # Sort newest first by timestamp
         results.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
@@ -86,4 +89,5 @@ class EventLog:
 
     def clear(self) -> None:
         """Remove all events (for testing)."""
-        self._db.truncate()
+        with self._db_lock:
+            self._db.truncate()

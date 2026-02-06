@@ -1,5 +1,7 @@
 """Tests for framework/events.py — event log and pub/sub."""
 
+import threading
+
 import pytest
 
 from framework.events import Event, EventLog
@@ -115,3 +117,66 @@ class TestEventLog:
         assert results[0]["data"]["i"] == 9
         assert results[1]["data"]["i"] == 8
         assert results[2]["data"]["i"] == 7
+
+
+class TestEventLogThreadSafety:
+    def test_concurrent_emits(self, event_log):
+        """10 threads emitting simultaneously — no corruption."""
+        errors = []
+
+        def emitter(i):
+            try:
+                event_log.emit(Event(type="test", source=f"thread-{i}", data={"i": i}))
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=emitter, args=(i,)) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        assert len(event_log.query(limit=100)) == 10
+
+    def test_concurrent_reads_during_emits(self, event_log):
+        """Readers get consistent data while emitters are active."""
+        event_log.emit(Event(type="seed", source="test"))
+        errors = []
+
+        def reader():
+            try:
+                results = event_log.query(limit=100)
+                assert len(results) >= 1  # at least the seed
+            except Exception as e:
+                errors.append(e)
+
+        def emitter(i):
+            try:
+                event_log.emit(Event(type="test", source=f"thread-{i}"))
+            except Exception as e:
+                errors.append(e)
+
+        threads = (
+            [threading.Thread(target=reader) for _ in range(5)]
+            + [threading.Thread(target=emitter, args=(i,)) for i in range(5)]
+        )
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+
+    def test_lock_prevents_corruption(self, event_log):
+        """After concurrent ops, event count matches expected."""
+        def emitter(i):
+            event_log.emit(Event(type="test", source=f"t-{i}"))
+
+        threads = [threading.Thread(target=emitter, args=(i,)) for i in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(event_log.query(limit=100)) == 20

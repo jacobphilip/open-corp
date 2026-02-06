@@ -5,7 +5,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tinydb import TinyDB, Query
+from tinydb import Query
+
+from framework.db import get_db
 
 from framework.config import ProjectConfig
 from framework.events import Event, EventLog
@@ -39,8 +41,7 @@ class Scheduler:
         self.router = router
         self.event_log = event_log
         self.db_path = db_path or config.project_dir / "data" / "scheduler.json"
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = TinyDB(str(self.db_path))
+        self._db, self._db_lock = get_db(self.db_path)
         self._scheduler = None
 
     def _get_scheduler(self):
@@ -72,22 +73,24 @@ class Scheduler:
         if not task.created_at:
             task.created_at = datetime.now(timezone.utc).isoformat()
 
-        self._db.insert({
-            "id": task.id,
-            "worker_name": task.worker_name,
-            "message": task.message,
-            "schedule_type": task.schedule_type,
-            "schedule_value": task.schedule_value,
-            "enabled": task.enabled,
-            "description": task.description,
-            "created_at": task.created_at,
-        })
+        with self._db_lock:
+            self._db.insert({
+                "id": task.id,
+                "worker_name": task.worker_name,
+                "message": task.message,
+                "schedule_type": task.schedule_type,
+                "schedule_value": task.schedule_value,
+                "enabled": task.enabled,
+                "description": task.description,
+                "created_at": task.created_at,
+            })
         return task
 
     def remove_task(self, task_id: str) -> None:
         """Remove a scheduled task by ID."""
         Q = Query()
-        removed = self._db.remove(Q.id == task_id)
+        with self._db_lock:
+            removed = self._db.remove(Q.id == task_id)
         if not removed:
             raise SchedulerError(task_id, "Task not found")
 
@@ -100,18 +103,22 @@ class Scheduler:
 
     def list_tasks(self) -> list[dict]:
         """Return all scheduled tasks."""
-        return self._db.all()
+        with self._db_lock:
+            return self._db.all()
 
     def get_task(self, task_id: str) -> dict | None:
         """Return a single task by ID, or None."""
         Q = Query()
-        results = self._db.search(Q.id == task_id)
+        with self._db_lock:
+            results = self._db.search(Q.id == task_id)
         return results[0] if results else None
 
     def start(self) -> None:
         """Register all enabled tasks with APScheduler and start."""
         scheduler = self._get_scheduler()
-        for task_doc in self._db.all():
+        with self._db_lock:
+            all_tasks = self._db.all()
+        for task_doc in all_tasks:
             if task_doc.get("enabled", True):
                 self._register_job(task_doc)
         scheduler.start()
