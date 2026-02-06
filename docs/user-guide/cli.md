@@ -154,6 +154,14 @@ Pages: home (budget gauge, recent events), workers (team review), worker detail,
 
 API endpoints: `/api/status`, `/api/budget`, `/api/workers`, `/api/events`, `/api/workflows`, `/api/schedule`.
 
+**Authentication:** Set `DASHBOARD_TOKEN` in `.env` to require auth. When set:
+
+- Browser: visit `/login?token=your-token` to get a session cookie
+- API: include `Authorization: Bearer your-token` header
+- Without auth on non-localhost hosts, the command exits with a warning
+
+**Rate limiting:** Configurable via `security.dashboard_rate_limit` and `security.dashboard_rate_burst` in charter.yaml.
+
 ## Scheduling
 
 ### `corp schedule add <worker> <message>`

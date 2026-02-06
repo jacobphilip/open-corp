@@ -46,6 +46,7 @@
 ```
 exceptions → config → accountant → router → worker → hr → CLI
                   ↘ db → events/scheduler/workflow
+                  ↘ validation → webhooks/dashboard/hr/scheduler/CLI/bot
                   ↘ webhooks/broker → CLI
                   ↘ registry → CLI
                   ↘ marketplace → CLI
@@ -82,6 +83,26 @@ Models are organized into tiers (cheap, mid, premium). The router tries models w
 
 Worker level (1-5) maps to model tier access. Higher-level workers get access to more capable (and expensive) models. Performance-based auto-promotion/demotion adjusts levels over time.
 
+### Input Validation
+
+All external input (worker names, file paths, payload sizes) is validated at the boundary. Worker names use a regex whitelist (`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`). File paths are resolved and checked against the project root. The `validation.py` module is imported by all entry points: HR, scheduler, dashboard, webhooks, CLI, and Telegram bot.
+
+### Rate Limiting
+
+Webhooks and dashboard use an in-process token bucket rate limiter, keyed by client IP. Limits are configurable via `SecurityConfig` in charter.yaml. This prevents abuse without external dependencies.
+
+### Secret Redaction
+
+A `SecretFilter` logging filter automatically redacts API keys, Bearer tokens, and environment variable assignments from log output. Applied by default in `setup_logging()`.
+
+### Atomic Writes
+
+Worker memory and performance JSON files use `safe_write_json()` which writes to a tempfile then atomically renames. This prevents corruption on crash. `safe_load_json()` detects corrupted files, backs them up as `.corrupt`, and returns defaults.
+
+### Router Retry
+
+The router retries transient HTTP errors (429, 502, 503, 504) and connection/timeout exceptions with exponential backoff before falling back to the next model in the tier.
+
 ## Module Reference
 
 | Module | Responsibility |
@@ -98,7 +119,11 @@ Worker level (1-5) maps to model tier access. Higher-level workers get access to
 | `events.py` | Event logging and querying |
 | `scheduler.py` | APScheduler task scheduling |
 | `workflow.py` | DAG workflow engine with parallel execution |
-| `webhooks.py` | Flask webhook HTTP server |
+| `webhooks.py` | Flask webhook HTTP server with rate limiting |
 | `broker.py` | Paper trading broker |
 | `registry.py` | Multi-operation project registry |
 | `marketplace.py` | Remote template marketplace client |
+| `validation.py` | Input validation, rate limiting, safe JSON I/O |
+| `dashboard.py` | Web dashboard with auth and rate limiting |
+| `housekeeping.py` | Data retention and cleanup |
+| `log.py` | Structured logging with secret redaction |

@@ -57,6 +57,12 @@ retention:
   workflows_days: 90          # Days to keep workflow run history
   performance_max: 100        # Max performance records per worker
 
+security:
+  webhook_rate_limit: 10      # Requests/sec per IP (webhook server)
+  webhook_rate_burst: 20      # Burst capacity
+  dashboard_rate_limit: 30    # Requests/sec per IP (dashboard)
+  dashboard_rate_burst: 60    # Burst capacity
+
 git:
   auto_commit: false
   auto_push: false
@@ -74,7 +80,11 @@ Store secrets in `.env` at the project root:
 ```
 OPENROUTER_API_KEY=sk-or-your-key-here
 WEBHOOK_API_KEY=your-webhook-secret
+DASHBOARD_TOKEN=your-dashboard-auth-token
 ```
+
+!!! warning ".env file permissions"
+    The `.env` file should be readable only by the owner (`chmod 600 .env`). If group or other permissions are set, a warning is emitted on startup. `corp init` automatically sets secure permissions.
 
 ## Worker Configuration
 
@@ -132,3 +142,32 @@ The accountant tracks spending and enforces budget pressure:
 - **Caution** (60-80%) — warning logged
 - **Austerity** (80-95%) — forces cheaper model tiers
 - **Critical** (> 95%) — API calls blocked
+
+## Security
+
+Configure rate limiting for webhooks and dashboard:
+
+```yaml
+security:
+  webhook_rate_limit: 10    # Requests/sec per IP
+  webhook_rate_burst: 20    # Burst capacity (allows short spikes)
+  dashboard_rate_limit: 30  # Requests/sec per IP
+  dashboard_rate_burst: 60  # Burst capacity
+```
+
+All fields are optional with the defaults shown above.
+
+**Dashboard authentication:** Set `DASHBOARD_TOKEN` in `.env` to require authentication. Without it, the dashboard is open (bind to localhost only). With a token set:
+
+- Browser: visit `/login?token=your-token` to get an httponly session cookie
+- API: include `Authorization: Bearer your-token` header
+
+**Worker name validation:** All worker names are validated against `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`. Names with path traversal characters, slashes, or special characters are rejected.
+
+**Secret redaction:** API keys and tokens are automatically redacted from log output. Patterns matched: `sk-or-*`, `sk-*`, `Bearer *`, and `API_KEY=*` style assignments.
+
+**Router retry:** Transient API errors (HTTP 429, 502, 503, 504) are retried with exponential backoff before falling back to the next model. Configure via Router constructor:
+
+- `max_retries` — retries per model (default: 2)
+- `retry_base_delay` — initial delay in seconds (default: 1.0)
+- `retry_max_delay` — maximum delay cap (default: 8.0)

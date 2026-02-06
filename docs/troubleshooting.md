@@ -99,6 +99,56 @@ pip install "open-corp[broker]"
 
 Or specify prices manually: `corp broker buy AAPL 10 --price 150`
 
+### Dashboard "401 Unauthorized"
+
+**Cause:** `DASHBOARD_TOKEN` is set but no valid token provided.
+
+**Fix:**
+
+- Browser: visit `http://localhost:5000/login?token=your-token`
+- API: include `Authorization: Bearer your-token` header
+- Or remove `DASHBOARD_TOKEN` from `.env` to disable auth (localhost only)
+
+### "Validation error: Invalid worker name"
+
+**Cause:** Worker name contains invalid characters (slashes, spaces, special chars, or starts with hyphen/underscore).
+
+**Fix:** Use only letters, numbers, hyphens, and underscores. Must start with a letter or number. Maximum 64 characters.
+
+```bash
+# Valid names
+corp chat alice
+corp chat my-worker-1
+
+# Invalid names
+corp chat ../evil       # path traversal
+corp chat "my worker"   # spaces
+corp chat _private      # leading underscore
+```
+
+### "429 Too Many Requests"
+
+**Cause:** Rate limit exceeded on webhook or dashboard.
+
+**Fix:**
+
+- Wait a moment and retry
+- Increase limits in `charter.yaml`:
+  ```yaml
+  security:
+    webhook_rate_limit: 20
+    webhook_rate_burst: 40
+  ```
+
+### ".env file is group/other readable" warning
+
+**Cause:** `.env` has permissions allowing other users to read it.
+
+**Fix:**
+```bash
+chmod 600 .env
+```
+
 ## Getting Help
 
 - Check [CLI Reference](user-guide/cli.md) for command syntax

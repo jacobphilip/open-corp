@@ -31,6 +31,8 @@ The test suite uses pytest with respx for HTTP mocking. All API calls are mocked
 - Dataclasses (no Pydantic)
 - Dependency injection (constructors, no singletons except db registry)
 - All exceptions include a `.suggestion` field for user-facing messages
+- All external input validated at the boundary (use `validate_worker_name()` from `framework.validation`)
+- JSON files use `safe_load_json()` / `safe_write_json()` for corruption resilience
 
 ## Adding a New Module
 
@@ -84,6 +86,16 @@ chore: build, deps, tooling
 4. One logical change per PR
 5. Keep PRs focused — avoid mixing features with refactors
 
+## Security Considerations
+
+When adding new entry points (CLI commands, bot handlers, API endpoints):
+
+- Validate worker names with `validate_worker_name()` from `framework.validation`
+- Validate file paths with `validate_path_within()` to prevent path traversal
+- Use `hmac.compare_digest()` for token comparison (constant-time)
+- Never log API keys or tokens — `SecretFilter` handles this automatically
+- Use `safe_write_json()` for any JSON persistence (atomic writes)
+
 ## Architecture Notes
 
 - All state is file-based (JSON/YAML in project directory)
@@ -91,3 +103,5 @@ chore: build, deps, tooling
 - Budget enforcement is automatic and cannot be bypassed
 - Worker seniority maps to model tier access
 - Workflows execute in parallel by depth layer
+- Input validation happens at boundaries, not in core logic
+- Rate limiting is in-process (token bucket per IP, no external deps)

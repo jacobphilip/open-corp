@@ -16,7 +16,9 @@ open-corp is a framework for building and managing teams of AI workers. Each wor
 - **Multi-Operation Management** — Switch between multiple projects seamlessly
 - **Template Marketplace** — Browse and install worker templates from a remote registry
 - **Scheduling** — Cron, interval, and one-time task scheduling with daemon support
-- **Webhooks** — HTTP API for triggering tasks externally
+- **Webhooks** — HTTP API for triggering tasks externally with rate limiting and payload validation
+- **Dashboard** — Local web dashboard with HTML pages and JSON API, optional auth
+- **Security** — Input validation, secret redaction, rate limiting, atomic writes, dashboard authentication
 - **Paper Trading** — Built-in broker for simulated stock trading workflows
 
 ## Quick Example
@@ -40,4 +42,4 @@ corp review
 
 ## Version
 
-Current version: **1.0.0**
+Current version: **1.3.0**

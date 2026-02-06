@@ -16,6 +16,36 @@ Auto-generated from source code docstrings.
     options:
       show_source: false
 
+::: framework.config.SecurityConfig
+    options:
+      show_source: false
+
+## Validation
+
+::: framework.validation.validate_worker_name
+    options:
+      show_source: false
+
+::: framework.validation.validate_path_within
+    options:
+      show_source: false
+
+::: framework.validation.validate_payload_size
+    options:
+      show_source: false
+
+::: framework.validation.RateLimiter
+    options:
+      show_source: false
+
+::: framework.validation.safe_load_json
+    options:
+      show_source: false
+
+::: framework.validation.safe_write_json
+    options:
+      show_source: false
+
 ## Worker
 
 ::: framework.worker.Worker
