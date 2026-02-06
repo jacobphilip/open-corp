@@ -4,6 +4,7 @@
 
 # Runtime data
 data/
+workers/
 
 # Python
 __pycache__/

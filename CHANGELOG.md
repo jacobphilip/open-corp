@@ -5,6 +5,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [0.5.0] — 2026-02-05
+
+### Added
+- **framework/db.py** — Thread-safe TinyDB wrapper with singleton registry and per-path `threading.Lock`
+- **framework/webhooks.py** — Flask webhook server with bearer token auth (`/health`, `/trigger/workflow`, `/trigger/task`, `/events`)
+- **framework/broker.py** — Paper trading broker with TinyDB ledger, position tracking, and optional yfinance price fetching
+- **framework/exceptions.py** — `BrokerError` and `WebhookError` exception classes
+- **framework/workflow.py** — Parallel workflow execution via `ThreadPoolExecutor` with depth-based node grouping (`_compute_depths`)
+- **scripts/corp.py** — New CLI commands: `daemon start/stop/status`, `webhook start/keygen`, `broker account/positions/buy/sell/price/trades`
+- **templates/trader/** — Trading specialist template (risk management, position sizing)
+- **workflows/example_trading.yaml** — Diamond DAG demonstrating parallel scan + recommendation
+- **tests/test_db.py** — 12 tests for thread-safe wrapper
+- **tests/test_webhooks.py** — 14 tests for webhook server
+- **tests/test_broker.py** — 16 tests for paper trading
+- **tests/test_accountant.py** — +3 thread-safety tests
+- **tests/test_events.py** — +3 thread-safety tests
+- **tests/test_scheduler.py** — +3 thread-safety tests
+- **tests/test_workflow.py** — +7 parallel execution and depth computation tests
+- **tests/test_cli.py** — +7 daemon/webhook/broker CLI tests
+- **tests/test_exceptions.py** — +2 tests for BrokerError and WebhookError
+- **pyproject.toml** — `flask>=3.0` added to dependencies, `yfinance>=0.2` as optional broker dependency
+- **.env.example** — `WEBHOOK_API_KEY` added
+
+### Changed
+- **Breaking:** `corp daemon` is now `corp daemon start` (group with start/stop/status subcommands)
+- All TinyDB usage now thread-safe via `framework.db.get_db()` with per-path locks
+- Accountant, EventLog, Scheduler, WorkflowEngine migrated from direct `TinyDB()` to `get_db()`
+- Workflow execution is parallel by depth layer (independent nodes run concurrently)
+- Daemon supports PID file, background mode (`-d`), SIGTERM handler, and `stop`/`status` subcommands
+- Total test count: 185 → 252
+
+---
+
 ## [0.4.0] — 2026-02-05
 
 ### Added

@@ -1,6 +1,6 @@
 # Roadmap — open-corp
 
-Current version: **0.4.0**
+Current version: **0.5.0**
 
 ---
 
@@ -64,16 +64,19 @@ Status: **Complete**
 
 ---
 
-## v0.5 — Integrations
+## v0.5.0 — Stability & Integrations
 
-Status: **Planned**
+Status: **Complete**
 
-- [ ] Board of Advisors wiring (Grok, ChatGPT, Claude direct API)
-- [ ] Live broker integration (Interactive Brokers) for trading example
-- [ ] Webhook endpoints for external triggers
-- [ ] Parallel workflow fan-out (threaded node execution)
-- [ ] Thread-safe TinyDB access for scheduler
-- [ ] Daemon systemd/nohup support
+- [x] Thread-safe TinyDB wrapper — singleton registry with per-path locking
+- [x] Parallel workflow execution — depth-based fan-out via ThreadPoolExecutor
+- [x] Daemon start/stop/status — PID file, background mode, SIGTERM handler
+- [x] Flask webhook server — bearer token auth, workflow/task triggers, event emission
+- [x] Paper trading broker — TinyDB ledger, position tracking, optional yfinance
+- [x] Trader template and example trading workflow
+- [x] BrokerError and WebhookError exceptions
+- [x] CLI: `daemon start/stop/status`, `webhook start/keygen`, `broker account/positions/buy/sell/price/trades`
+- [x] Tests — 252 tests, all passing
 
 ---
 

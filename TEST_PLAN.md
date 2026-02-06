@@ -1,6 +1,6 @@
 # Test Plan — open-corp
 
-Version: **0.4.0** | Total tests: **185** | Status: **All passing**
+Version: **0.5.0** | Total tests: **252** | Status: **All passing**
 
 ---
 
@@ -29,7 +29,7 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 
 ---
 
-## test_accountant.py — 9 tests
+## test_accountant.py — 12 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -42,6 +42,9 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 | 7 | test_frozen_at_limit | 100% spending → BudgetExceeded raised |
 | 8 | test_frozen_over_limit | Over-limit → BudgetExceeded raised |
 | 9 | test_daily_report | Report contains correct breakdowns by worker/model |
+| 10 | test_concurrent_writes | 10 threads recording calls — no corruption |
+| 11 | test_concurrent_reads_during_writes | Readers get consistent data during writes |
+| 12 | test_lock_prevents_corruption | After concurrent ops, call count matches expected |
 
 ---
 
@@ -96,7 +99,7 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 
 ---
 
-## test_exceptions.py — 5 tests
+## test_exceptions.py — 7 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -105,6 +108,8 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 | 3 | test_exceptions_backward_compat | All exceptions work without explicit suggestion |
 | 4 | test_scheduler_error | SchedulerError fields and string output |
 | 5 | test_workflow_error | WorkflowError with/without node and suggestion |
+| 6 | test_broker_error | BrokerError reason and suggestion |
+| 7 | test_webhook_error | WebhookError reason and suggestion |
 
 ---
 
@@ -116,7 +121,7 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 | 2 | test_template_config_valid_yaml | config.yaml parses, has "level" |
 | 3 | test_template_skills_valid_yaml | skills.yaml parses, has "role" and "skills" |
 | 4 | test_template_profile_nonempty | profile.md is non-empty |
-| 5 | test_hire_from_each_template | HR can hire from every template |
+| 5 | test_hire_from_each_template | HR can hire from every template (including trader) |
 
 ---
 
@@ -179,7 +184,7 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 
 ---
 
-## test_cli.py — 31 tests
+## test_cli.py — 38 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -214,10 +219,17 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 | 29 | test_chat_multi_turn_history | Two messages, 3 API calls (2 chat + 1 summary) |
 | 30 | test_chat_summarizes_on_quit | "Session summary saved" in output |
 | 31 | test_chat_summary_failure_graceful | API error → fallback message |
+| 32 | test_daemon_status_not_running | "not running" when no PID file |
+| 33 | test_daemon_stop_not_running | exit 1 when not running |
+| 34 | test_daemon_start_already_running | exit 1 when PID file with live process |
+| 35 | test_webhook_keygen | Outputs a key |
+| 36 | test_webhook_start_missing_key | exit 1 without WEBHOOK_API_KEY |
+| 37 | test_broker_account | Shows cash, equity, P&L |
+| 38 | test_broker_buy_sell | Paper trade round trip |
 
 ---
 
-## test_events.py — 10 tests (NEW in v0.4)
+## test_events.py — 13 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -231,10 +243,13 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 | 8 | test_query_by_type | Filter by event type |
 | 9 | test_query_by_source | Filter by source |
 | 10 | test_query_limit | Limit caps results, newest first |
+| 11 | test_concurrent_emits | 10 threads emitting — no corruption |
+| 12 | test_concurrent_reads_during_emits | Readers consistent during writes |
+| 13 | test_lock_prevents_corruption | Event count matches after concurrent ops |
 
 ---
 
-## test_scheduler.py — 10 tests (NEW in v0.4)
+## test_scheduler.py — 13 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -248,10 +263,13 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 | 8 | test_execute_task | Mocked router, response returned + events emitted |
 | 9 | test_execute_task_failure | Chat error → task.failed event, returns None |
 | 10 | test_execute_task_not_found | Missing task → returns None |
+| 11 | test_concurrent_writes | 10 threads adding tasks — no corruption |
+| 12 | test_concurrent_reads_during_writes | Readers consistent during writes |
+| 13 | test_lock_prevents_corruption | Task count matches after concurrent ops |
 
 ---
 
-## test_workflow.py — 14 tests (NEW in v0.4)
+## test_workflow.py — 21 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -269,6 +287,76 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 | 12 | test_run_with_dependency | Node B uses {A.output}, verify substitution |
 | 13 | test_run_node_failure_skips_downstream | A fails → B skipped |
 | 14 | test_run_persists_result | WorkflowRun stored in TinyDB |
+| 15 | test_compute_depths_single | Single node → depth 0 |
+| 16 | test_compute_depths_chain | A→B→C → depths 0,1,2 |
+| 17 | test_compute_depths_diamond | A→(B,C)→D → depths 0,1,1,2 |
+| 18 | test_parallel_two_independent | Two independent nodes both complete |
+| 19 | test_parallel_diamond_dag | A→(B,C)→D all complete |
+| 20 | test_parallel_with_failure | Failed node skips downstream |
+| 21 | test_parallel_max_workers | max_workers=1 forces sequential |
+
+---
+
+## test_db.py — 12 tests (NEW in v0.5)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_get_db_returns_tinydb_and_lock | Returns (TinyDB, Lock) tuple |
+| 2 | test_get_db_same_path_same_instance | Same path → same TinyDB object |
+| 3 | test_get_db_different_paths | Different paths → different instances |
+| 4 | test_get_db_creates_parent_dirs | Parent directories auto-created |
+| 5 | test_close_all | All instances closed, registry empty |
+| 6 | test_get_db_after_close_all | Fresh instance after close_all |
+| 7 | test_close_all_idempotent | Calling twice doesn't error |
+| 8 | test_concurrent_get_db_same_path | 10 threads → same instance |
+| 9 | test_concurrent_writes | 10 threads writing → no corruption |
+| 10 | test_concurrent_read_write | Readers + writers → consistent |
+| 11 | test_lock_is_per_db | Lock on A doesn't block B |
+| 12 | test_reset_registry | _reset_registry clears without close |
+
+---
+
+## test_webhooks.py — 14 tests (NEW in v0.5)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_health_no_auth | /health returns 200 without auth |
+| 2 | test_trigger_workflow_no_auth | 401 without bearer token |
+| 3 | test_trigger_workflow_bad_auth | 401 with wrong token |
+| 4 | test_auth_timing_safe | hmac.compare_digest used |
+| 5 | test_trigger_workflow_success | Valid auth + workflow → 200 + run_id |
+| 6 | test_trigger_workflow_missing_file | 400 for missing workflow file |
+| 7 | test_trigger_workflow_missing_body | 400 for empty body |
+| 8 | test_trigger_workflow_budget_exceeded | Error when budget frozen |
+| 9 | test_trigger_task_success | Valid task creation → 200 + task_id |
+| 10 | test_trigger_task_missing_worker | 400 for missing worker field |
+| 11 | test_trigger_task_invalid_worker | 400 for nonexistent worker |
+| 12 | test_trigger_task_with_run_at | Scheduled task with future timestamp |
+| 13 | test_emit_event_success | Event persisted to event log |
+| 14 | test_emit_event_missing_type | 400 for missing type |
+
+---
+
+## test_broker.py — 16 tests (NEW in v0.5)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_initial_account | $10,000 cash on init |
+| 2 | test_get_positions_empty | Empty list when no positions |
+| 3 | test_buy_success | Cash decreases, position created |
+| 4 | test_buy_insufficient_cash | BrokerError raised |
+| 5 | test_buy_zero_quantity | BrokerError raised |
+| 6 | test_multiple_buys_avg_entry | Weighted average entry price |
+| 7 | test_sell_success | Cash increases, position reduced |
+| 8 | test_sell_insufficient_shares | BrokerError raised |
+| 9 | test_sell_all_removes_position | Full sell removes position entry |
+| 10 | test_partial_sell | Position quantity reduced, avg unchanged |
+| 11 | test_get_positions_with_data | Returns all positions |
+| 12 | test_get_account_after_trades | Equity = cash + positions |
+| 13 | test_get_trades_all | Returns all trades newest first |
+| 14 | test_get_trades_by_symbol | Filtered by symbol |
+| 15 | test_get_price_without_yfinance | BrokerError with install suggestion |
+| 16 | test_concurrent_trades | 5 threads buying → consistent |
 
 ---
 
@@ -290,13 +378,15 @@ Version: **0.4.0** | Total tests: **185** | Status: **All passing**
 
 ---
 
-## Coverage Gaps (known, acceptable for v0.4)
+## Coverage Gaps (known, acceptable for v0.5)
 
 - **YouTube training pipeline:** No automated tests for actual download/transcribe (requires yt-dlp + whisper)
 - **PDF training:** Uses mocked pypdf in tests (real PDF parsing tested manually)
 - **APScheduler integration:** Tests validate CRUD and `_execute_task()` directly; `start()`/`stop()` with live APScheduler not tested (would require timing-sensitive assertions)
-- **Daemon CLI:** Not tested (blocks the terminal; manual verification required)
+- **Daemon background mode:** `os.fork()` not testable in pytest; manual verification required
+- **yfinance price fetching:** Tests mock yfinance entirely; live API tested manually
+- **Flask dev server:** Tests use Flask test client; production deployment (gunicorn) not tested
 
 ---
 
-Total tests: **185** | All passing
+Total tests: **252** | All passing

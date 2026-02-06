@@ -292,10 +292,13 @@ open-corp/
 │   ├── hr.py                    # Hiring, training (document/web/YouTube), firing, promoting
 │   ├── events.py                # Event system: TinyDB-backed log with in-memory pub/sub
 │   ├── scheduler.py             # Scheduled task execution (APScheduler daemon)
-│   └── workflow.py              # DAG workflow engine (YAML-defined, topological execution)
+│   ├── workflow.py              # DAG workflow engine (parallel execution by depth layer)
+│   ├── db.py                    # Thread-safe TinyDB wrapper (singleton per path + Lock)
+│   ├── webhooks.py              # Flask webhook server with bearer token auth
+│   └── broker.py                # Paper trading broker (TinyDB ledger + optional yfinance)
 │
 ├── scripts/
-│   ├── corp.py                  # CLI — init, status, budget, workers, hire, chat, train, inspect, knowledge, schedule, workflow, daemon, events
+│   ├── corp.py                  # CLI — init, status, budget, workers, hire, chat, train, inspect, knowledge, schedule, workflow, daemon, events, webhook, broker
 │   └── telegram_bot.py          # Telegram bot interface
 │
 ├── templates/                   # Starter worker templates
@@ -303,23 +306,30 @@ open-corp/
 │   ├── content-repurposer/      # Content transformation specialist
 │   ├── job-hunter/              # Career assistant
 │   ├── data-analyst/            # Data analysis specialist
-│   └── content-writer/          # Content writing specialist
+│   ├── content-writer/          # Content writing specialist
+│   └── trader/                  # Trading specialist
 │
-├── tests/                       # 185 tests (pytest + respx)
+├── workflows/                   # Example workflow definitions
+│   └── example_trading.yaml     # Parallel scan + recommendation DAG
+│
+├── tests/                       # 252 tests (pytest + respx)
 │   ├── conftest.py              # Shared fixtures
 │   ├── test_config.py           # 8 tests
-│   ├── test_accountant.py       # 9 tests
+│   ├── test_accountant.py       # 12 tests
 │   ├── test_router.py           # 14 tests
-│   ├── test_exceptions.py       # 5 tests
+│   ├── test_exceptions.py       # 7 tests
 │   ├── test_templates.py        # 5 tests
 │   ├── test_worker.py           # 24 tests
 │   ├── test_hr.py               # 21 tests
-│   ├── test_cli.py              # 31 tests
+│   ├── test_cli.py              # 38 tests
 │   ├── test_knowledge.py        # 23 tests
 │   ├── test_telegram_bot.py     # 11 tests
-│   ├── test_events.py           # 10 tests
-│   ├── test_scheduler.py        # 10 tests
-│   └── test_workflow.py         # 14 tests
+│   ├── test_events.py           # 13 tests
+│   ├── test_scheduler.py        # 13 tests
+│   ├── test_workflow.py         # 21 tests
+│   ├── test_db.py               # 12 tests
+│   ├── test_webhooks.py         # 14 tests
+│   └── test_broker.py           # 16 tests
 │
 ├── projects/                    # YOUR projects go here
 │   └── .gitkeep
@@ -365,8 +375,8 @@ These principles are encoded in the `CLAUDE.md` file that your LLM reads automat
 | **v0.1** | Core framework, CLI, Telegram bot, 2 worker templates, 71 tests |
 | **v0.2** | Worker training from documents, web pages, YouTube playlists; knowledge search; 117 tests |
 | **v0.3** | `corp init` wizard, multi-turn chat, `corp inspect`, 3 new templates, improved errors; 145 tests |
-| **v0.4** (current) | Event system, scheduled tasks (APScheduler), DAG workflow engine, chat truncation; 185 tests |
-| **v0.5** | Board of Advisors wiring, broker integrations |
+| **v0.4** | Event system, scheduled tasks (APScheduler), DAG workflow engine, chat truncation; 185 tests |
+| **v0.5** (current) | Thread-safe DB, parallel workflows, webhook server, paper trading broker, daemon improvements; 252 tests |
 | **v1.0** | Production-ready, self-optimizing operations, community marketplace |
 
 See [ROADMAP.md](ROADMAP.md) for full details.
