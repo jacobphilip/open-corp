@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.2.0] — 2026-02-05
+
+### Added
+- **framework/dashboard.py** — Read-only Flask web dashboard with app factory pattern; HTML pages (home, workers, worker detail, budget, events, workflows, schedule) + JSON API (`/api/status`, `/api/budget`, `/api/workers`, `/api/events`, `/api/workflows`, `/api/schedule`)
+- **framework/templates/dashboard/** — 8 Jinja2 templates (base + 7 pages + error) with budget gauge, status badges, navigation
+- **framework/static/style.css** — Minimal dashboard CSS (~80 lines): system-ui font, gauge bars, status badges, responsive tables
+- **scripts/telegram_bot.py** — 8 new command handlers: `/fire` (inline keyboard confirm), `/review`, `/delegate`, `/events`, `/schedule`, `/workflow`, `/inspect`, `/housekeep`; `CallbackQueryHandler` for fire confirmation
+- **scripts/corp.py** — New `dashboard` command with `--port` and `--host` options
+- **tests/test_dashboard.py** — 20 tests for dashboard HTML pages and JSON API endpoints
+- **tests/test_telegram_bot.py** — +15 tests for new bot commands (fire with callback, review, delegate, events, schedule, workflow, inspect)
+
+### Changed
+- `pyproject.toml` — Added `[tool.setuptools.package-data]` for dashboard templates and static files
+- Total test count: 388 → 423
+
+---
+
 ## [1.1.0] — 2026-02-05
 
 ### Added

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Schedule</h1>
+
+{% if tasks %}
+<table>
+  <tr><th>ID</th><th>Worker</th><th>Type</th><th>Value</th><th>Enabled</th></tr>
+  {% for t in tasks %}
+  <tr>
+    <td>{{ t.id }}</td>
+    <td>{{ t.worker_name }}</td>
+    <td>{{ t.schedule_type }}</td>
+    <td>{{ t.schedule_value }}</td>
+    <td>{{ "Yes" if t.get("enabled", true) else "No" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No scheduled tasks.</p>
+{% endif %}
+{% endblock %}

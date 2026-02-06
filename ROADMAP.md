@@ -1,6 +1,6 @@
 # Roadmap — open-corp
 
-Current version: **1.1.0**
+Current version: **1.2.0**
 
 ---
 
@@ -107,3 +107,18 @@ Status: **Complete**
 - [x] Workflow timeouts — per-node `timeout` (300s default) and `retries` (0 default), workflow-level `timeout`
 - [x] Worker fire with cleanup — scheduler task removal, workflow reference warnings, `corp fire` command
 - [x] Tests — 388 tests, all passing
+
+---
+
+## v1.2.0 — Telegram Enhancement + Web Dashboard
+
+Status: **Complete**
+
+- [x] Telegram bot parity with v1.1 CLI — 8 new commands: /fire (inline keyboard), /review, /delegate, /events, /schedule, /workflow, /inspect, /housekeep
+- [x] CallbackQueryHandler for fire confirmation with inline keyboard buttons
+- [x] Local web dashboard — Flask app factory, 7 HTML pages + JSON API, read-only monitoring
+- [x] Dashboard templates — Jinja2 with budget gauge, status badges, worker detail, event filtering
+- [x] Dashboard CSS — minimal system-ui style with gauge bars and workflow status badges
+- [x] CLI dashboard command — `corp dashboard` with `--port` and `--host` options
+- [x] Package data — templates and static files included in setuptools build
+- [x] Tests — 423 tests, all passing

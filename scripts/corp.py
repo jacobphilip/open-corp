@@ -1418,5 +1418,24 @@ def validate(ctx):
         sys.exit(1)
 
 
+@cli.command()
+@click.option("--port", default=5000, help="Port to listen on")
+@click.option("--host", default="127.0.0.1", help="Host to bind to")
+@click.pass_context
+def dashboard(ctx, port, host):
+    """Start the local web dashboard."""
+    try:
+        config, accountant, router, hr = _load_project(ctx.obj["project_dir"])
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
+
+    from framework.dashboard import create_dashboard_app
+    app = create_dashboard_app(config, accountant, router, hr)
+
+    click.echo(f"Dashboard starting on http://{host}:{port}")
+    app.run(host=host, port=port)
+
+
 if __name__ == "__main__":
     cli()

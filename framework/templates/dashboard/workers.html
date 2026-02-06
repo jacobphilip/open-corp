@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Workers</h1>
+{% if workers %}
+<table>
+  <tr><th>Name</th><th>Level</th><th>Role</th><th>Avg Rating</th><th>Tasks</th></tr>
+  {% for w in workers %}
+  <tr>
+    <td><a href="/workers/{{ w.name }}">{{ w.name }}</a></td>
+    <td>{{ seniority.get(w.level, "L" ~ w.level) }}</td>
+    <td>{{ w.role }}</td>
+    <td>{{ w.avg_rating }}</td>
+    <td>{{ w.task_count }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No workers hired yet.</p>
+{% endif %}
+{% endblock %}

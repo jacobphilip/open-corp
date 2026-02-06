@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Workflows</h1>
+
+{% if runs %}
+<table>
+  <tr><th>ID</th><th>Workflow</th><th>Status</th><th>Started</th><th>Completed</th></tr>
+  {% for r in runs %}
+  <tr>
+    <td>{{ r.id }}</td>
+    <td>{{ r.workflow_name }}</td>
+    <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+    <td>{{ r.get("started_at", "")[:19] }}</td>
+    <td>{{ r.get("completed_at", "")[:19] }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No workflow runs.</p>
+{% endif %}
+{% endblock %}

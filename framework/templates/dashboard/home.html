@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ config.name }}</h1>
+
+<div class="gauge" data-status="{{ report.status }}">
+  <div class="gauge-fill" style="width: {{ (report.usage_ratio * 100)|round }}%"></div>
+  <span>${{ "%.4f"|format(report.total_spent) }} / ${{ "%.2f"|format(report.daily_limit) }} ({{ report.status }})</span>
+</div>
+
+<p>Workers: {{ workers|length }}</p>
+
+<h2>Recent Events</h2>
+{% if events %}
+<table>
+  <tr><th>Time</th><th>Type</th><th>Source</th></tr>
+  {% for e in events %}
+  <tr>
+    <td>{{ e.timestamp[:19] }}</td>
+    <td>{{ e.type }}</td>
+    <td>{{ e.source }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No events yet.</p>
+{% endif %}
+{% endblock %}

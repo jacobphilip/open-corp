@@ -139,6 +139,21 @@ Validate project configuration and references. Checks that:
 - Scheduled task worker references exist
 - Workflow YAML files parse correctly
 
+## Dashboard
+
+### `corp dashboard`
+
+Start the local web dashboard. Read-only monitoring UI with HTML pages and a JSON API.
+
+Options:
+
+- `--port PORT` — port to listen on (default: 5000)
+- `--host HOST` — host to bind to (default: 127.0.0.1)
+
+Pages: home (budget gauge, recent events), workers (team review), worker detail, budget breakdown, events (with type filter), workflows, schedule.
+
+API endpoints: `/api/status`, `/api/budget`, `/api/workers`, `/api/events`, `/api/workflows`, `/api/schedule`.
+
 ## Scheduling
 
 ### `corp schedule add <worker> <message>`

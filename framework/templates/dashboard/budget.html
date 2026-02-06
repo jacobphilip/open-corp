@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Budget</h1>
+
+<div class="gauge" data-status="{{ report.status }}">
+  <div class="gauge-fill" style="width: {{ (report.usage_ratio * 100)|round }}%"></div>
+  <span>${{ "%.4f"|format(report.total_spent) }} / ${{ "%.2f"|format(report.daily_limit) }}</span>
+</div>
+
+<dl>
+  <dt>Date</dt><dd>{{ report.date }}</dd>
+  <dt>Remaining</dt><dd>${{ "%.4f"|format(report.remaining) }}</dd>
+  <dt>Status</dt><dd>{{ report.status }}</dd>
+  <dt>Calls</dt><dd>{{ report.call_count }}</dd>
+  <dt>Tokens In</dt><dd>{{ report.total_tokens_in }}</dd>
+  <dt>Tokens Out</dt><dd>{{ report.total_tokens_out }}</dd>
+</dl>
+
+{% if report.by_worker %}
+<h2>By Worker</h2>
+<table>
+  <tr><th>Worker</th><th>Cost</th></tr>
+  {% for w, cost in report.by_worker.items()|sort %}
+  <tr><td>{{ w }}</td><td>${{ "%.4f"|format(cost) }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if report.by_model %}
+<h2>By Model</h2>
+<table>
+  <tr><th>Model</th><th>Cost</th></tr>
+  {% for m, cost in report.by_model.items()|sort %}
+  <tr><td>{{ m }}</td><td>${{ "%.4f"|format(cost) }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ config.name }} — Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav>
+    <a href="/" class="brand">{{ config.name }}</a>
+    <a href="/workers">Workers</a>
+    <a href="/budget">Budget</a>
+    <a href="/events">Events</a>
+    <a href="/workflows">Workflows</a>
+    <a href="/schedule">Schedule</a>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>open-corp dashboard</footer>
+</body>
+</html>

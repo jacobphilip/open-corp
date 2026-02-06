@@ -1,6 +1,6 @@
 # Test Plan — open-corp
 
-Version: **1.1.0** | Total tests: **388** | Status: **All passing**
+Version: **1.2.0** | Total tests: **423** | Status: **All passing**
 
 ---
 
@@ -440,7 +440,7 @@ Version: **1.1.0** | Total tests: **388** | Status: **All passing**
 
 ---
 
-## test_telegram_bot.py — 11 tests
+## test_telegram_bot.py — 26 tests
 
 | # | Test | Validates |
 |---|------|-----------|
@@ -455,6 +455,21 @@ Version: **1.1.0** | Total tests: **388** | Status: **All passing**
 | 9 | test_budget_shows_report | Reply contains Spent/Remaining |
 | 10 | test_message_no_active_worker | "No active worker" when unset |
 | 11 | test_message_routes_to_worker | Patches Worker, verifies reply |
+| 12 | test_fire_no_args | Reply contains "Usage:" |
+| 13 | test_fire_worker_not_found | Reply contains "not found" |
+| 14 | test_fire_shows_confirm_keyboard | Shows inline keyboard with Yes/No buttons |
+| 15 | test_fire_callback_yes | Callback yes fires the worker |
+| 16 | test_fire_callback_no | Callback no cancels the fire |
+| 17 | test_review_team | Team review lists workers |
+| 18 | test_review_individual | Individual review shows performance summary |
+| 19 | test_review_worker_not_found | Reply contains "not found" |
+| 20 | test_delegate_no_args | Reply contains "Usage:" |
+| 21 | test_delegate_routes_message | Delegates to auto-selected worker |
+| 22 | test_events_empty | "No events" when empty |
+| 23 | test_events_shows_recent | Shows events after emitting one |
+| 24 | test_schedule_empty | "No scheduled tasks" when empty |
+| 25 | test_workflow_empty | "No workflow runs" when empty |
+| 26 | test_inspect_project_overview | Project overview shows name and budget |
 
 ---
 
@@ -550,7 +565,34 @@ Version: **1.1.0** | Total tests: **388** | Status: **All passing**
 
 ---
 
-## Coverage Gaps (known, acceptable for v1.1)
+## test_dashboard.py — 20 tests (NEW in v1.2)
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | test_home_returns_200 | Home page returns 200 |
+| 2 | test_home_contains_project_name | Home page shows project name |
+| 3 | test_home_shows_budget | Home page shows budget limit |
+| 4 | test_workers_page_200 | Workers page returns 200 |
+| 5 | test_workers_lists_names | Workers page shows hired worker names |
+| 6 | test_worker_detail_200 | Worker detail page returns 200 |
+| 7 | test_worker_detail_404 | Nonexistent worker returns 404 |
+| 8 | test_budget_page_200 | Budget page returns 200 |
+| 9 | test_budget_shows_limit | Budget page shows daily limit |
+| 10 | test_events_page_200 | Events page returns 200 |
+| 11 | test_events_with_type_filter | Events page filters by type |
+| 12 | test_workflows_page_200 | Workflows page returns 200 |
+| 13 | test_schedule_page_200 | Schedule page returns 200 |
+| 14 | test_api_status_json | /api/status returns project info |
+| 15 | test_api_budget_json | /api/budget returns daily report |
+| 16 | test_api_workers_json | /api/workers returns team review |
+| 17 | test_api_events_json | /api/events returns event list |
+| 18 | test_api_events_with_filter | /api/events?type= filters correctly |
+| 19 | test_api_workflows_json | /api/workflows returns run list |
+| 20 | test_api_schedule_json | /api/schedule returns task list |
+
+---
+
+## Coverage Gaps (known, acceptable for v1.2)
 
 - **YouTube training pipeline:** No automated tests for actual download/transcribe (requires yt-dlp + whisper)
 - **PDF training:** Uses mocked pypdf in tests (real PDF parsing tested manually)
@@ -561,4 +603,4 @@ Version: **1.1.0** | Total tests: **388** | Status: **All passing**
 
 ---
 
-Total tests: **388** | All passing
+Total tests: **423** | All passing

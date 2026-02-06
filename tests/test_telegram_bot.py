@@ -1,5 +1,6 @@
 """Tests for scripts/telegram_bot.py bot handlers."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,8 +9,10 @@ import yaml
 import scripts.telegram_bot as bot_module
 from framework.accountant import Accountant
 from framework.config import ProjectConfig
+from framework.events import EventLog
 from framework.hr import HR
 from framework.router import Router
+from framework.scheduler import Scheduler, ScheduledTask
 
 
 @pytest.fixture
@@ -184,3 +187,169 @@ class TestHandleMessage:
 
         reply = update.message.reply_text.call_args[0][0]
         assert "4" in reply
+
+
+def _make_callback_query(data=""):
+    """Create a mock Update with callback_query for inline keyboard tests."""
+    update = MagicMock()
+    update.callback_query.data = data
+    update.callback_query.answer = AsyncMock()
+    update.callback_query.edit_message_text = AsyncMock()
+    context = MagicMock()
+    return update, context
+
+
+class TestCmdFire:
+    @pytest.mark.asyncio
+    async def test_fire_no_args(self, bot_setup):
+        """Reply contains 'Usage:'."""
+        update, context = _make_update(args=[])
+        await bot_module.cmd_fire(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "Usage:" in reply
+
+    @pytest.mark.asyncio
+    async def test_fire_worker_not_found(self, bot_setup):
+        """Reply contains 'not found'."""
+        update, context = _make_update(args=["ghost"])
+        await bot_module.cmd_fire(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "not found" in reply
+
+    @pytest.mark.asyncio
+    async def test_fire_shows_confirm_keyboard(self, bot_setup, create_worker):
+        """Shows inline keyboard with Yes/No."""
+        create_worker("zara")
+        update, context = _make_update(args=["zara"])
+        await bot_module.cmd_fire(update, context)
+        call_kwargs = update.message.reply_text.call_args
+        assert "reply_markup" in call_kwargs[1]
+        markup = call_kwargs[1]["reply_markup"]
+        buttons = markup.inline_keyboard[0]
+        assert any("fire_yes_zara" in b.callback_data for b in buttons)
+        assert any("fire_no_zara" in b.callback_data for b in buttons)
+
+    @pytest.mark.asyncio
+    async def test_fire_callback_yes(self, bot_setup, create_worker):
+        """Callback yes fires the worker."""
+        create_worker("zara")
+        update, context = _make_callback_query(data="fire_yes_zara")
+        await bot_module.handle_fire_callback(update, context)
+        reply = update.callback_query.edit_message_text.call_args[0][0]
+        assert "Fired" in reply
+        assert "zara" in reply
+
+    @pytest.mark.asyncio
+    async def test_fire_callback_no(self, bot_setup, create_worker):
+        """Callback no cancels the fire."""
+        create_worker("zara")
+        update, context = _make_callback_query(data="fire_no_zara")
+        await bot_module.handle_fire_callback(update, context)
+        reply = update.callback_query.edit_message_text.call_args[0][0]
+        assert "Cancelled" in reply
+
+
+class TestCmdReview:
+    @pytest.mark.asyncio
+    async def test_review_team(self, bot_setup, create_worker):
+        """Team review lists workers."""
+        create_worker("alice")
+        update, context = _make_update()
+        await bot_module.cmd_review(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "alice" in reply
+
+    @pytest.mark.asyncio
+    async def test_review_individual(self, bot_setup, create_worker):
+        """Individual review shows performance summary."""
+        create_worker("alice")
+        update, context = _make_update(args=["alice"])
+        await bot_module.cmd_review(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "alice" in reply
+        assert "Tasks:" in reply
+
+    @pytest.mark.asyncio
+    async def test_review_worker_not_found(self, bot_setup):
+        """Reply contains 'not found'."""
+        update, context = _make_update(args=["ghost"])
+        await bot_module.cmd_review(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "not found" in reply
+
+
+class TestCmdDelegate:
+    @pytest.mark.asyncio
+    async def test_delegate_no_args(self, bot_setup):
+        """Reply contains 'Usage:'."""
+        update, context = _make_update(args=[])
+        await bot_module.cmd_delegate(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "Usage:" in reply
+
+    @pytest.mark.asyncio
+    async def test_delegate_routes_message(self, bot_setup, create_worker):
+        """Delegates to auto-selected worker."""
+        create_worker("alice", role="tester")
+        update, context = _make_update(args=["run", "tests"])
+
+        with patch("scripts.telegram_bot.Worker") as MockWorker:
+            mock_instance = MockWorker.return_value
+            mock_instance.chat.return_value = ("tests passed", [])
+            await bot_module.cmd_delegate(update, context)
+
+        reply = update.message.reply_text.call_args[0][0]
+        assert "tests passed" in reply
+
+
+class TestCmdEvents:
+    @pytest.mark.asyncio
+    async def test_events_empty(self, bot_setup):
+        """Reply is 'No events.' when empty."""
+        update, context = _make_update()
+        await bot_module.cmd_events(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "No events" in reply
+
+    @pytest.mark.asyncio
+    async def test_events_shows_recent(self, bot_setup):
+        """Shows events after emitting one."""
+        from framework.events import Event
+        event_log = EventLog(bot_module._project_dir / "data" / "events.json")
+        event_log.emit(Event(type="test.event", source="test"))
+
+        update, context = _make_update()
+        await bot_module.cmd_events(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "test.event" in reply
+
+
+class TestCmdSchedule:
+    @pytest.mark.asyncio
+    async def test_schedule_empty(self, bot_setup):
+        """Reply is 'No scheduled tasks.' when empty."""
+        update, context = _make_update()
+        await bot_module.cmd_schedule(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "No scheduled tasks" in reply
+
+
+class TestCmdWorkflow:
+    @pytest.mark.asyncio
+    async def test_workflow_empty(self, bot_setup):
+        """Reply is 'No workflow runs.' when empty."""
+        update, context = _make_update()
+        await bot_module.cmd_workflow(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "No workflow runs" in reply
+
+
+class TestCmdInspect:
+    @pytest.mark.asyncio
+    async def test_inspect_project_overview(self, bot_setup):
+        """Project overview shows name and budget."""
+        update, context = _make_update()
+        await bot_module.cmd_inspect(update, context)
+        reply = update.message.reply_text.call_args[0][0]
+        assert "Test Project" in reply
+        assert "Budget:" in reply

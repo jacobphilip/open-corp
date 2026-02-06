@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ worker.name }}</h1>
+
+<dl>
+  <dt>Level</dt><dd>{{ title }} (L{{ worker.level }}, tier={{ worker.get_tier() }})</dd>
+  <dt>Memory</dt><dd>{{ worker.memory|length }} entries</dd>
+  <dt>Knowledge</dt><dd>{{ worker.knowledge.entries|length }} entries</dd>
+  <dt>Tasks</dt><dd>{{ summary.task_count }}</dd>
+  <dt>Avg Rating</dt><dd>{{ summary.avg_rating }}</dd>
+  <dt>Success Rate</dt><dd>{{ "%.0f"|format(summary.success_rate * 100) }}%</dd>
+  <dt>Trend</dt><dd>{{ "%+.2f"|format(summary.trend) }}</dd>
+</dl>
+
+{% if worker.performance %}
+<h2>Recent Tasks</h2>
+<table>
+  <tr><th>Task</th><th>Result</th><th>Rating</th></tr>
+  {% for p in worker.performance[-10:]|reverse %}
+  <tr>
+    <td>{{ p.get("task", "")[:60] }}</td>
+    <td>{{ p.get("result", "") }}</td>
+    <td>{{ p.get("rating", "-") }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Events</h1>
+
+<p>
+  Filter: <a href="/events">All</a>
+  {% if current_type %} | Showing: {{ current_type }}{% endif %}
+</p>
+
+{% if events %}
+<table>
+  <tr><th>Time</th><th>Type</th><th>Source</th></tr>
+  {% for e in events %}
+  <tr>
+    <td>{{ e.timestamp[:19] }}</td>
+    <td><a href="/events?type={{ e.type }}">{{ e.type }}</a></td>
+    <td>{{ e.source }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No events.</p>
+{% endif %}
+{% endblock %}
